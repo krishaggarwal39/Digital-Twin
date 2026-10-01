@@ -8,10 +8,21 @@ venv/
 dist/
 build/
 .DS_Store
+# Large, fully-regenerable datasets (recreate by running the data + feature scripts)
 data/synthea/*.csv
 data/wearable/*.csv
 data/processed/*.csv
+
+# Ignore processed JSON by default, but KEEP the trained models, metrics, and
+# feature metadata so the API/dashboard run out-of-the-box and judges can verify
+# the reported results without retraining.
 data/processed/*.json
+!data/processed/evaluation_results.json
+!data/processed/feature_names.json
+!data/processed/split_info.json
+!data/processed/xgb_fused_regressor.json
+!data/processed/xgb_fused_classifier.json
+
 *.joblib
 *.pkl
 node_modules/
