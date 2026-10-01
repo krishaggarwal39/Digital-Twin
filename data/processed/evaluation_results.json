@@ -1,0 +1,45 @@
+{
+  "static_only": {
+    "rmse": 20.73,
+    "mae": 16.19,
+    "r2": 0.7229,
+    "auroc": 0.9511,
+    "precision": 0.0,
+    "recall": 0.0,
+    "f1": 0.0,
+    "n_features": 18
+  },
+  "dynamic_only": {
+    "rmse": 19.87,
+    "mae": 15.69,
+    "r2": 0.7452,
+    "auroc": 0.9598,
+    "precision": 0.7534,
+    "recall": 0.0814,
+    "f1": 0.1469,
+    "n_features": 29
+  },
+  "fused": {
+    "rmse": 17.37,
+    "mae": 13.69,
+    "r2": 0.8054,
+    "auroc": 0.9756,
+    "precision": 0.74,
+    "recall": 0.1642,
+    "f1": 0.2688,
+    "n_features": 47
+  },
+  "classifier": {
+    "auroc": 0.9744,
+    "precision": 0.2533,
+    "recall": 0.8994,
+    "f1": 0.3953
+  },
+  "persistence_baseline": {
+    "rmse": 27.61,
+    "mae": 21.74,
+    "r2": 0.5082,
+    "n_features": 1,
+    "note": "Naive persistence baseline: predicts glucose(t+2h) = cgm_current"
+  }
+}

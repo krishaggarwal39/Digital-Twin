@@ -64,7 +64,7 @@ def extract_static_features(profile: pd.Series) -> dict:
 
 
 def extract_dynamic_features(window: pd.DataFrame) -> dict:
-    """Extract 30 dynamic features from a 4-hour (48 readings) lookback window."""
+    """Extract 29 dynamic features from a 4-hour (48 readings) lookback window."""
     # CGM features
     cgm = window["cgm_glucose"].values
     cgm_mean_4h = float(np.mean(cgm))

@@ -50,8 +50,8 @@ def train_models(data):
     models = {}
     configs = {
         "static_only": {"X_key": "X_static", "desc": "Static features only (18)"},
-        "dynamic_only": {"X_key": "X_dynamic", "desc": "Dynamic features only (30)"},
-        "fused": {"X_key": "X_all", "desc": "All features fused (48)"},
+        "dynamic_only": {"X_key": "X_dynamic", "desc": "Dynamic features only (29)"},
+        "fused": {"X_key": "X_all", "desc": "All features fused (47)"},
     }
 
     for name, config in configs.items():
@@ -146,6 +146,20 @@ def evaluate_models(models, classifier, data, feature_names):
     y_test_reg = data["test"]["y_reg"]
     y_test_cls = data["test"]["y_cls"]
 
+    def adverse_risk_score(glucose_pred: np.ndarray) -> np.ndarray:
+        """Map a predicted glucose value to a monotic adverse-event risk score.
+
+        An adverse event is glucose > 250 (hyper) OR < 54 (hypo), so risk must
+        increase as the prediction moves ABOVE the hyper threshold or BELOW the
+        hypo threshold. Using the raw prediction as the score (as a naive
+        implementation would) is incorrect for hypoglycemia, where a *lower*
+        glucose means *higher* risk. We take the distance past the nearer danger
+        threshold, which is a valid ranking score for ROC AUC.
+        """
+        hyper = glucose_pred - 250.0   # positive when above hyper threshold
+        hypo = 54.0 - glucose_pred     # positive when below hypo threshold
+        return np.maximum(hyper, hypo)
+
     for name, config in configs.items():
         X_test = data["test"][config["X_key"]]
         model = models[name]
@@ -168,10 +182,10 @@ def evaluate_models(models, classifier, data, feature_names):
         else:
             precision = recall = f1 = 0.0
 
-        # AUROC (using regression predictions as scores for adverse events)
-        # Higher predicted glucose -> higher risk
+        # AUROC using a correct symmetric distance-to-danger risk score so that
+        # both hyperglycemic and hypoglycemic excursions are ranked properly.
         if len(np.unique(y_test_cls)) > 1:
-            auroc = roc_auc_score(y_test_cls, y_pred)
+            auroc = roc_auc_score(y_test_cls, adverse_risk_score(y_pred))
         else:
             auroc = 0.0
 
@@ -254,6 +268,35 @@ def compute_shap(model, X_test, feature_names_list, output_dir, n_samples=500, s
     return shap_values, importance
 
 
+def evaluate_persistence_baseline(data, feature_names):
+    """Naive persistence baseline: predict glucose(t+2h) = glucose(t) = cgm_current.
+
+    This is the shortcut any trivial model could exploit; beating it is the bar
+    that proves the model learns real multi-hour physiological dynamics rather
+    than just echoing the latest reading.
+    """
+    all_cols = feature_names["all"]
+    cgm_idx = all_cols.index("cgm_current")
+
+    X_test = data["test"]["X_all"]
+    y_test_reg = data["test"]["y_reg"]
+    y_test_cls = data["test"]["y_cls"]
+
+    y_pred = X_test[:, cgm_idx]  # persistence: future == current
+
+    rmse = np.sqrt(mean_squared_error(y_test_reg, y_pred))
+    mae = mean_absolute_error(y_test_reg, y_pred)
+    r2 = r2_score(y_test_reg, y_pred)
+
+    return {
+        "rmse": round(float(rmse), 2),
+        "mae": round(float(mae), 2),
+        "r2": round(float(r2), 4),
+        "n_features": 1,
+        "note": "Naive persistence baseline: predicts glucose(t+2h) = cgm_current",
+    }
+
+
 def main():
     output_dir = "data/processed"
     os.makedirs(output_dir, exist_ok=True)
@@ -281,6 +324,13 @@ def main():
     print("EVALUATION RESULTS")
     print("="*60)
     results = evaluate_models(models, classifier, data, feature_names)
+
+    # 4b. Naive persistence baseline (reproducible, computed from code)
+    persistence = evaluate_persistence_baseline(data, feature_names)
+    results["persistence_baseline"] = persistence
+    print("\npersistence_baseline:")
+    for metric, value in persistence.items():
+        print(f"  {metric}: {value}")
 
     # 5. Save models
     models["fused"].save_model(os.path.join(output_dir, "xgb_fused_regressor.json"))
@@ -310,11 +360,13 @@ def main():
     print("\n" + "="*60)
     print("FINAL ABLATION COMPARISON")
     print("="*60)
-    print(f"\n{'Model':<20} {'Features':>10} {'RMSE':>10} {'MAE':>10} {'R²':>10} {'AUROC':>10}")
-    print("-" * 70)
+    print(f"\n{'Model':<22} {'Features':>9} {'RMSE':>9} {'MAE':>9} {'R²':>9} {'AUROC':>9}")
+    print("-" * 72)
+    pb = results["persistence_baseline"]
+    print(f"{'persistence_baseline':<22} {pb['n_features']:>9} {pb['rmse']:>9.2f} {pb['mae']:>9.2f} {pb['r2']:>9.4f} {'—':>9}")
     for name in ["static_only", "dynamic_only", "fused"]:
         r = results[name]
-        print(f"{name:<20} {r['n_features']:>10} {r['rmse']:>10.2f} {r['mae']:>10.2f} {r['r2']:>10.4f} {r['auroc']:>10.4f}")
+        print(f"{name:<22} {r['n_features']:>9} {r['rmse']:>9.2f} {r['mae']:>9.2f} {r['r2']:>9.4f} {r['auroc']:>9.4f}")
 
     print("\n✅ Training and evaluation complete!")
 
