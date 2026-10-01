@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cardiometabolic Digital Twin — Clinical Dashboard</title>
+  <meta name="description" content="Real-time clinical digital twin dashboard for Type 2 Diabetes predictive glycemic excursion monitoring, SHAP explainability, and counterfactual simulation.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <!-- Fullscreen Loading Overlay -->
+  <div id="loading-overlay" class="loading-overlay">
+    <div class="loader-content">
+      <div class="spinner"></div>
+      <p class="loading-text">Synchronizing Patient Digital Twin...</p>
+      <span class="loading-sub">Solving physiological ODEs & running fused XGBoost inference</span>
+    </div>
+  </div>
+
+  <!-- Header Navigation -->
+  <header class="dashboard-header">
+    <div class="header-brand">
+      <div class="brand-icon">🧬</div>
+      <div class="brand-text">
+        <h1>Cardiometabolic Digital Twin</h1>
+        <p class="brand-subtitle">Predictive Glycemic Excursion & Intervention Engine</p>
+      </div>
+    </div>
+
+    <div class="header-controls">
+      <div class="control-group">
+        <label for="patient-selector" class="control-label">Patient Cohort</label>
+        <div class="select-wrapper">
+          <select id="patient-selector" class="patient-select" aria-label="Select Patient">
+            <option value="" disabled selected>Loading patients...</option>
+          </select>
+        </div>
+      </div>
+      <div class="connection-status" id="connection-badge">
+        <span class="status-dot"></span>
+        <span class="status-label">Engine Active (Port 8000)</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Grid Layout -->
+  <div class="dashboard-grid">
+    <!-- Left Sidebar: Patient 360 & Risk Gauge -->
+    <aside class="sidebar-column">
+      <!-- Section 1: Patient 360 -->
+      <section class="card patient-360-card" id="patient-360-section">
+        <div class="card-header">
+          <div class="card-title-group">
+            <span class="card-icon">👤</span>
+            <h2>Patient 360° Profile</h2>
+          </div>
+          <span class="patient-id-badge" id="patient-badge-id">P001</span>
+        </div>
+        <div id="patient-card" class="patient-card-body">
+          <!-- Populated dynamically by app.js -->
+          <div class="skeleton-loader"></div>
+        </div>
+      </section>
+
+      <!-- Section 3: 2-Hour Risk Gauge -->
+      <section class="card risk-gauge-card" id="risk-gauge-section">
+        <div class="card-header">
+          <div class="card-title-group">
+            <span class="card-icon">⚡</span>
+            <h2>2-Hour Adverse Risk</h2>
+          </div>
+          <span class="horizon-badge">+120 min</span>
+        </div>
+        <div id="risk-gauge" class="gauge-container">
+          <div class="gauge-arc-wrapper">
+            <svg class="gauge-svg" viewBox="0 0 200 120">
+              <path class="gauge-bg" d="M 20 105 A 80 80 0 0 1 180 105" fill="none" stroke-width="16" stroke-linecap="round"/>
+              <path id="gauge-fill" class="gauge-fill" d="M 20 105 A 80 80 0 0 1 180 105" fill="none" stroke-width="16" stroke-linecap="round"/>
+            </svg>
+            <div class="gauge-center-content">
+              <span id="risk-probability" class="gauge-percentage">--%</span>
+              <span class="gauge-caption">Adverse Probability</span>
+            </div>
+          </div>
+          <div class="gauge-footer">
+            <div class="risk-status-pill">
+              <span class="risk-label-tag">Classification:</span>
+              <span id="risk-level-text" class="risk-level-display">Evaluating...</span>
+            </div>
+            <div class="forecast-value-box">
+              <span class="forecast-label">Forecasted Glucose (2h):</span>
+              <span class="forecast-reading"><strong id="predicted-glucose-value">--</strong> mg/dL</span>
+            </div>
+          </div>
+        </div>
+      </section>
+    </aside>
+
+    <!-- Main Content Column -->
+    <main class="main-column">
+      <!-- Section 2: CGM + Vitals Timeline -->
+      <section class="card timeline-card" id="timeline-section">
+        <div class="card-header flex-between">
+          <div class="card-title-group">
+            <span class="card-icon">📈</span>
+            <h2>Continuous Physiological Timeline</h2>
+            <span class="timeframe-tag">Last 12 Hours &bull; 5-min Resolution + 2-Hour Forecast</span>
+          </div>
+          <div class="timeline-legend-custom">
+            <span class="legend-item"><span class="legend-color cgm-color"></span>CGM Glucose</span>
+            <span class="legend-item"><span class="legend-color hr-color"></span>Heart Rate</span>
+            <span class="legend-item"><span class="legend-color forecast-dot"></span>2h Forecast</span>
+          </div>
+        </div>
+
+        <div id="timeline-chart-container" class="chart-container-timeline">
+          <canvas id="timeline-chart"></canvas>
+        </div>
+
+        <!-- Current Vitals Readings Bar -->
+        <div id="current-readings" class="vitals-bar">
+          <!-- Populated by app.js -->
+        </div>
+      </section>
+
+      <!-- Section 4: SHAP Explainability -->
+      <section class="card shap-card" id="shap-section">
+        <div class="card-header flex-between">
+          <div class="card-title-group">
+            <span class="card-icon">🧠</span>
+            <h2>Predictive Feature Attributions (SHAP Explainer)</h2>
+            <span class="subtitle-tag">TreeExplainer attributions indicating driving mechanisms behind the 2h forecast</span>
+          </div>
+          <div class="shap-legend">
+            <span class="legend-pill stream-static">🔵 Static Clinical EHR</span>
+            <span class="legend-pill stream-dynamic">🟠 Dynamic Wearable Sensor</span>
+          </div>
+        </div>
+        <div id="shap-container" class="shap-bars-grid">
+          <!-- Populated dynamically by app.js -->
+        </div>
+      </section>
+
+      <!-- Section 5: What-If Intervention Simulator -->
+      <section class="card simulator-card" id="simulator-section">
+        <div class="card-header flex-between">
+          <div class="card-title-group">
+            <span class="card-icon">🔬</span>
+            <h2>What-If Counterfactual Intervention Simulator</h2>
+            <span class="subtitle-tag">Bergman ODE Forward Projections (Deterministic $S_G, p_2, p_3, R_a, Ex$)</span>
+          </div>
+          <span class="badge badge-teal">Twin Simulation Active</span>
+        </div>
+        <div id="simulator-container" class="scenario-grid">
+          <!-- 4 Scenario Cards populated by app.js -->
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Footer -->
+  <footer class="dashboard-footer">
+    <div class="footer-content">
+      <p class="footer-left">🧬 <strong>Cardiometabolic Digital Twin Engine</strong> &bull; Built for Digital Twin Challenge 2026 | Happiest Health × Unstop</p>
+      <p class="footer-right">Synthea EHR Cohort &bull; Bergman Minimal ODE Simulator &bull; Fused XGBoost &bull; TreeExplainer</p>
+    </div>
+  </footer>
+
+  <script src="js/app.js"></script>
+</body>
+</html>
