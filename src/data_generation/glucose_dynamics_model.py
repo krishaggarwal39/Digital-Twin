@@ -110,7 +110,13 @@ class PatientParams:
             Initialized model parameter instance.
         """
         patient_id: str = str(profile.get("patient_id", "P001"))
-        G_b: float = float(profile["fasting_glucose"])
+        # Basal setpoint: fasting glucose is the overnight trough the ODE relaxes toward.
+        # Dampen very high fasting values toward a physiological basal so that even
+        # poorly controlled patients sit in a realistically-bad (not sensor-saturated)
+        # range, while keeping a clinically elevated fasting trough.
+        # Maps fasting 90->90, 150->141, 200->182, 280->248.
+        fasting_glucose: float = float(profile["fasting_glucose"])
+        G_b: float = float(90.0 + 0.79 * (fasting_glucose - 90.0))
 
         # Basal insulin: baseline 8.0 μU/mL, elevated in patients requiring exogenous insulin
         I_b: float = (
@@ -123,27 +129,38 @@ class PatientParams:
         bmi: float = float(profile["bmi"])
         age: float = float(profile.get("age", 55.0))
 
-        # Glucose effectiveness S_G: Higher HbA1c impairs insulin-independent glucose disposal
-        S_G: float = float(np.clip(0.025 * (10.0 - hba1c) / 4.0, 0.005, 0.04))
+        # Glucose effectiveness S_G (1/min): insulin-independent glucose disposal.
+        # Literature basal S_G in T2DM is ~0.013-0.025/min. We scale it DOWN with
+        # worsening glycemia but keep a physiological floor so glucose still clears
+        # (a floor of 0.005 gives a ~200 min clearance time constant, which is
+        # non-physiological and causes meal stacking -> runaway hyperglycemia).
+        S_G: float = float(np.clip(0.021 - 0.0020 * (hba1c - 6.5), 0.010, 0.028))
 
         # Insulin action decay p2: Fixed standard literature constant
         p2: float = 0.025
 
-        # Insulin action sensitivity p3: Improved by insulin-sensitizing and incretin therapies
+        # Insulin action sensitivity p3 (1/min per μU/mL): improved by insulin-sensitizing
+        # and incretin therapies. Scaled relative to p2 to yield a realistic insulin
+        # sensitivity index S_I = p3/p2.
         med_metformin: float = float(profile.get("med_metformin", 0))
         med_sglt2i: float = float(profile.get("med_sglt2i", 0))
         med_glp1ra: float = float(profile.get("med_glp1ra", 0))
-        p3_raw: float = S_G * 0.4 * (
+        # Worse glycemic control -> lower baseline insulin sensitivity
+        p3_base: float = 1.2e-4 - 6.0e-6 * (hba1c - 6.5)
+        p3_raw: float = p3_base * (
             1.0 + 0.15 * med_metformin + 0.10 * med_sglt2i + 0.20 * med_glp1ra
         )
-        p3: float = float(np.clip(p3_raw, 0.00001, 0.0005))
+        p3: float = float(np.clip(p3_raw, 3.0e-5, 2.2e-4))
 
         # Derived insulin sensitivity index S_I = p3 / p2
         insulin_sensitivity: float = float(p3 / p2)
 
-        # Carbohydrate sensitivity: Higher HbA1c and severe adiposity amplify postprandial glycemic excursions
-        carb_sens_raw: float = 1.5 + 0.6 * (hba1c - 5.5) + 0.2 * (bmi - 25.0) / 10.0
-        carb_sensitivity: float = float(np.clip(carb_sens_raw, 0.8, 5.0))
+        # Carbohydrate sensitivity (mg/dL rise per gram, before absorption kinetics):
+        # higher HbA1c and adiposity amplify postprandial excursions. The meal flux is
+        # area-normalized, so this is the net glycemic punch per gram. Poorly controlled
+        # patients get steeper postprandial rises that can cross the 250 mg/dL threshold.
+        carb_sens_raw: float = 0.9 + 0.42 * (hba1c - 5.5) + 0.20 * (bmi - 25.0) / 10.0
+        carb_sensitivity: float = float(np.clip(carb_sens_raw, 0.6, 3.6))
 
         # Base gastrointestinal absorption rate (~40 min peak absorption for moderate GI meal)
         absorption_rate: float = 0.025
@@ -215,18 +232,22 @@ def meal_absorption_rate(
     k_gut: float = k_abs * 0.6
     diff: float = k_abs - k_gut
 
+    # Normalized double-exponential kernel. The shape term
+    #   (k_abs*k_gut/(k_abs-k_gut)) * (exp(-k_gut*dt) - exp(-k_abs*dt))
+    # integrates to 1 over t in [0, inf), so the total glucose appearance
+    # (area under Ra) equals exactly carbs * carb_sensitivity (mg/dL).
+    total_load: float = carbs * params.carb_sensitivity
+
     # L'Hôpital edge case when gut transit and absorption rates are identical
     if abs(diff) < 1e-8:
-        ra = carbs * params.carb_sensitivity * k_abs * dt * np.exp(-k_abs * dt)
+        shape = (k_abs ** 2) * dt * np.exp(-k_abs * dt)
     else:
-        ra = (
-            carbs
-            * params.carb_sensitivity
-            * k_abs
+        shape = (
+            (k_abs * k_gut / diff)
             * (np.exp(-k_gut * dt) - np.exp(-k_abs * dt))
-            / diff
         )
 
+    ra = total_load * shape
     return float(max(0.0, ra))
 
 
@@ -339,13 +360,17 @@ def simulate_glucose(
     t_eval: np.ndarray = np.arange(0.0, float(duration_minutes) + 0.5 * dt, float(dt))
     t_span: tuple = (0.0, float(duration_minutes))
 
+    # Use a local RNG seeded per-patient so that process/sensor noise is reproducible
+    # yet DISTINCT across patients. (A module-level np.random.seed here would make the
+    # noise identical for every patient, which is unrealistic and a data-integrity flaw.)
+    rng = np.random.default_rng(abs(hash(params.patient_id)) % (2**32))
+
     # Pre-generate smooth continuous process noise over a regular grid for RK45 integration stability
-    np.random.seed(42)
     grid_points: int = len(t_eval) + 2
     t_grid: np.ndarray = np.linspace(0.0, float(duration_minutes) + dt, grid_points)
     # Scaled to maintain physiological variance (process_noise_std) across differential time-steps
     noise_rate_std = params.process_noise_std / np.sqrt(dt)
-    noise_vals: np.ndarray = np.random.normal(0.0, noise_rate_std, size=grid_points)
+    noise_vals: np.ndarray = rng.normal(0.0, noise_rate_std, size=grid_points)
 
     def _get_process_noise(t_curr: float) -> float:
         return float(np.interp(t_curr, t_grid, noise_vals))
@@ -366,26 +391,22 @@ def simulate_glucose(
     def _meal_rate(t_curr: float) -> float:
         """Calculate total rate of glucose appearance Ra(t) into systemic circulation.
 
-        To satisfy the clinical minimal model definition where total glycemic excursion
-        integral matches carbs * carb_sensitivity, the rate of appearance flux is
-        normalized by the intestinal transit rate constant k_gut.
+        meal_absorption_rate returns a double-exponential (Dalla Man) flux whose
+        time-integral equals carbs * carb_sensitivity (the total glucose load the
+        meal contributes), expressed in mg/dL/min. Summed across active meals.
         """
         total_ra: float = 0.0
         for meal in meals:
             dt_m = t_curr - float(meal["time"])
             if 0.0 < dt_m < 360.0:
                 gi = float(meal.get("gi_index", 0.6))
-                k_abs = params.absorption_rate * (0.8 + 0.4 * gi)
-                k_gut = k_abs * 0.6
-                raw_ra = meal_absorption_rate(
+                total_ra += meal_absorption_rate(
                     t=t_curr,
                     meal_time=float(meal["time"]),
                     carbs=float(meal["carbs"]),
                     gi_index=gi,
                     params=params,
                 )
-                # Area-normalized flux: ensures peak glucose rise equals carbs * carb_sensitivity
-                total_ra += raw_ra * k_gut
         return total_ra
 
     def _exercise_rate(t_curr: float) -> float:
@@ -437,8 +458,8 @@ def simulate_glucose(
 
     raw_glucose: np.ndarray = sol.y[0]
 
-    # Add Gaussian sensor measurement noise
-    sensor_noise: np.ndarray = np.random.normal(
+    # Add Gaussian sensor measurement noise (same per-patient RNG stream)
+    sensor_noise: np.ndarray = rng.normal(
         0.0, params.sensor_noise_std, size=len(raw_glucose)
     )
     cgm_glucose: np.ndarray = raw_glucose + sensor_noise

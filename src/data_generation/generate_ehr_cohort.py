@@ -132,10 +132,13 @@ def generate_cohort(
     # 5. HbA1c: Core marker of chronic glycemia over preceding 90-120 days.
     # Clinical rationale: Adiposity (BMI > 28) worsens peripheral insulin resistance (+0.05 per unit).
     # Disease chronicity leads to progressive pancreatic beta-cell exhaust (+0.08 per year with T2DM).
-    base_hba1c = np.random.normal(7.8, 1.5, n_patients)
+    # Base centered so that AFTER adding BMI/duration effects the cohort mean HbA1c
+    # lands near ~7.6% (realistic for a monitored T2DM population) rather than skewing
+    # severe. Slopes are reduced to keep the right tail clinically plausible.
+    base_hba1c = np.random.normal(6.9, 1.1, n_patients)
     bmi_over_28 = np.maximum(0.0, bmi - 28.0)
     hba1c = np.clip(
-        np.round(base_hba1c + 0.05 * bmi_over_28 + 0.08 * years_with_t2dm, 1),
+        np.round(base_hba1c + 0.03 * bmi_over_28 + 0.045 * years_with_t2dm, 1),
         5.7,
         12.0
     )
