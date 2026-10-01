@@ -59,16 +59,26 @@ class DigitalTwin:
         patient_profile: dict,
         model_path: str = "data/processed/xgb_fused_regressor.json",
         feature_names_path: str = "data/processed/feature_names.json",
+        classifier_path: str = "data/processed/xgb_fused_classifier.json",
     ):
         """Initialize the twin from a patient's EHR profile."""
         self.profile = patient_profile
         self.params = PatientParams.from_ehr_profile(patient_profile)
 
-        # Load XGBoost model
+        # Load the 2-hour glucose regressor
         self.model = xgb.XGBRegressor()
         self.model.load_model(model_path)
 
-        # Create SHAP TreeExplainer
+        # Load the dedicated adverse-event classifier (trained with class weighting).
+        # The twin reports the classifier's calibrated probability rather than a
+        # hand-crafted heuristic, so the dashboard reflects the real model.
+        self.classifier: Optional[xgb.XGBClassifier] = None
+        if classifier_path and os.path.exists(classifier_path):
+            clf = xgb.XGBClassifier()
+            clf.load_model(classifier_path)
+            self.classifier = clf
+
+        # Create SHAP TreeExplainer on the regressor
         self.explainer = shap.TreeExplainer(self.model)
 
         # Load feature names
@@ -226,14 +236,20 @@ class DigitalTwin:
         dynamic_features = self._extract_dynamic_features()
         features = np.concatenate([self.static_features, dynamic_features])
 
-        predicted_glucose = float(self.model.predict(features.reshape(1, -1))[0])
+        features_2d = features.reshape(1, -1)
+        predicted_glucose = float(self.model.predict(features_2d)[0])
 
-        if predicted_glucose > 250.0:
-            prob = min(1.0, 0.5 + (predicted_glucose - 250.0) / 100.0)
-        elif predicted_glucose < 70.0:
-            prob = min(1.0, 0.5 + (70.0 - predicted_glucose) / 40.0)
+        # Adverse-event probability from the dedicated trained classifier.
+        if self.classifier is not None:
+            prob = float(self.classifier.predict_proba(features_2d)[0, 1])
         else:
-            prob = max(0.0, 1.0 - abs(predicted_glucose - 160.0) / 160.0) * 0.3
+            # Fallback heuristic (only used if the classifier model is unavailable)
+            if predicted_glucose > 250.0:
+                prob = min(1.0, 0.5 + (predicted_glucose - 250.0) / 100.0)
+            elif predicted_glucose < 70.0:
+                prob = min(1.0, 0.5 + (70.0 - predicted_glucose) / 40.0)
+            else:
+                prob = max(0.0, 1.0 - abs(predicted_glucose - 160.0) / 160.0) * 0.3
 
         if prob > 0.75:
             risk_level = "critical"
@@ -271,14 +287,24 @@ class DigitalTwin:
     def simulate(
         self,
         interventions: Optional[List[Intervention]] = None,
-        horizon_minutes: int = 120
+        horizon_minutes: int = 120,
+        reference_meal_carbs: float = 55.0,
+        reference_meal_gi: float = 0.6,
     ) -> List[SimulationResult]:
-        """Run baseline and counterfactual What-If simulations for interventions."""
+        """Run baseline and counterfactual What-If simulations for interventions.
+
+        To make the comparison clinically meaningful, the BASELINE represents the
+        patient eating a typical upcoming meal (``reference_meal_carbs`` grams) with
+        no corrective action. Each intervention is then evaluated against that same
+        anticipated meal, so a "20-minute walk" or "+2U insulin" visibly blunts the
+        post-meal rise, and a "low-carb swap" replaces the reference meal with a
+        smaller one. This mirrors how a clinician would reason about a next meal.
+        """
         if interventions is None:
             interventions = [
-                Intervention(name="20-minute brisk walk", intervention_type="exercise", duration=20.0, intensity=0.5),
-                Intervention(name="Low-carb meal swap (25g instead of 60g)", intervention_type="meal", carbs=25.0, gi_index=0.4),
-                Intervention(name="+2 unit rapid insulin bolus", intervention_type="insulin", dose=2.0, insulin_type="rapid"),
+                Intervention(name="20-minute brisk walk after the meal", intervention_type="exercise", duration=20.0, intensity=0.5),
+                Intervention(name="Low-carb meal swap (25g instead of 55g)", intervention_type="meal", carbs=25.0, gi_index=0.4),
+                Intervention(name="+2 unit rapid insulin bolus with the meal", intervention_type="insulin", dose=2.0, insulin_type="rapid"),
             ]
 
         current_glucose = float(self.history["cgm_glucose"].iloc[-1]) if len(self.history) > 0 else float(self.params.G_b)
@@ -288,6 +314,9 @@ class DigitalTwin:
         params_copy.G_b = current_glucose
         params_copy.process_noise_std = 0.0
         params_copy.sensor_noise_std = 0.0
+
+        # The anticipated meal shared by the baseline and the non-meal interventions.
+        reference_meal = {"time": 0.0, "carbs": float(reference_meal_carbs), "gi_index": float(reference_meal_gi)}
 
         def _create_sim_result(name: str, sim_output: dict) -> SimulationResult:
             times = sim_output["time_minutes"]
@@ -325,24 +354,26 @@ class DigitalTwin:
 
         results = []
 
-        # Baseline (No intervention)
+        # Baseline: patient eats the typical anticipated meal, takes no action.
         base_sim = simulate_glucose(
             params=params_copy,
-            meals=[],
+            meals=[dict(reference_meal)],
             exercises=[],
             insulin_events=[],
             duration_minutes=horizon_minutes,
             dt=5.0
         )
-        results.append(_create_sim_result("Baseline (No Intervention)", base_sim))
+        results.append(_create_sim_result("Baseline (usual meal, no action)", base_sim))
 
-        # Counterfactual scenarios
+        # Counterfactual scenarios, each evaluated against the same anticipated meal.
         for item in interventions:
-            meals = []
+            # Exercise and insulin interventions act ON TOP of the reference meal;
+            # a meal intervention REPLACES the reference meal with a different one.
+            itype = str(item.intervention_type).lower()
+            meals = [] if itype == "meal" else [dict(reference_meal)]
             exercises = []
             insulin_events = []
 
-            itype = str(item.intervention_type).lower()
             if itype == "exercise":
                 exercises.append({
                     "start": 0.0,
@@ -410,6 +441,7 @@ def load_twin_from_files(
     wearable_dir: str = "data/wearable",
     model_path: str = "data/processed/xgb_fused_regressor.json",
     feature_names_path: str = "data/processed/feature_names.json",
+    classifier_path: str = "data/processed/xgb_fused_classifier.json",
 ) -> DigitalTwin:
     """Convenience function to load a fully initialized DigitalTwin from files."""
     profiles = pd.read_csv(ehr_path)
@@ -418,7 +450,7 @@ def load_twin_from_files(
         raise ValueError(f"Patient {patient_id} not found in {ehr_path}")
     profile = matched.iloc[0].to_dict()
 
-    twin = DigitalTwin(profile, model_path, feature_names_path)
+    twin = DigitalTwin(profile, model_path, feature_names_path, classifier_path)
 
     wearable_path = os.path.join(wearable_dir, f"{patient_id}.csv")
     if not os.path.exists(wearable_path):
