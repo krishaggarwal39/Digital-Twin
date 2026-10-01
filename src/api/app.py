@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 import pandas as pd
 from pydantic import BaseModel
@@ -54,12 +54,15 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS for local development
+# CORS. The dashboard is served same-origin by this app, so credentials are not
+# needed. A wildcard origin combined with allow_credentials=True is rejected by
+# browsers, so we keep credentials disabled, which makes the wildcard valid and
+# still allows a separately-hosted dashboard to call the API during development.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -253,10 +256,16 @@ def simulate(patient_id: str, request: SimulationRequest = SimulationRequest()):
     return SimulationResponse(patient_id=patient_id, scenarios=scenarios)
 
 
-# Serve the dashboard
+# Serve the dashboard and assets
 dashboard_dir = os.path.join(os.path.dirname(__file__), "..", "..", "dashboard")
 if os.path.isdir(dashboard_dir):
     app.mount("/dashboard", StaticFiles(directory=dashboard_dir, html=True), name="dashboard")
+    css_dir = os.path.join(dashboard_dir, "css")
+    if os.path.isdir(css_dir):
+        app.mount("/css", StaticFiles(directory=css_dir), name="css")
+    js_dir = os.path.join(dashboard_dir, "js")
+    if os.path.isdir(js_dir):
+        app.mount("/js", StaticFiles(directory=js_dir), name="js")
 
 
 @app.get("/")
@@ -264,7 +273,7 @@ def root():
     """Redirect to dashboard or return API status."""
     dashboard_index = os.path.join(dashboard_dir, "index.html")
     if os.path.exists(dashboard_index):
-        return FileResponse(dashboard_index)
+        return RedirectResponse(url="/dashboard/")
     return {"message": "Cardiometabolic Digital Twin API", "docs": "/docs"}
 
 

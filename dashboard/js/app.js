@@ -33,12 +33,17 @@ const STREAM_COLORS = {
 let state = {
     currentPatientId: null,
     patientProfile: null,
+    patientState: null,       // authoritative current readings from /state
     timeline: null,
     prediction: null,
     simulation: null,
     timelineChart: null,      // Chart.js instance
     scenarioCharts: [],       // Array of Chart.js instances
+    refreshTimer: null,       // live auto-refresh interval handle
 };
+
+// Live refresh cadence for the lightweight state/prediction poll (ms).
+const REFRESH_INTERVAL_MS = 15000;
 
 // 3. API Communication
 async function fetchJSON(url, options = {}) {
@@ -78,12 +83,30 @@ async function loadSimulation(patientId) {
     });
 }
 
+async function loadState(patientId) {
+    return await fetchJSON(`${API_BASE}/api/patient/${patientId}/state`);
+}
+
 // 4. Formatting Utilities
 function formatTime(timestamp) {
     if (!timestamp) return '';
     const parts = timestamp.split(' ');
     if (parts.length > 1) return parts[1].substring(0, 5);
     return timestamp;
+}
+
+/**
+ * Build an HH:MM label `minutesAhead` minutes after the given timestamp.
+ * Used to place the 2-hour forecast ticks at the correct time on the x-axis.
+ */
+function forecastLabel(timestamp, minutesAhead) {
+    if (!timestamp) return `+${minutesAhead}m`;
+    const d = new Date(timestamp.replace(' ', 'T'));
+    if (isNaN(d.getTime())) return `+${minutesAhead}m`;
+    d.setMinutes(d.getMinutes() + minutesAhead);
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    return `${hh}:${mm}`;
 }
 
 function getRiskBadgeHTML(riskLevel) {
@@ -274,18 +297,31 @@ function renderTimelineChart(timeline, prediction) {
     const glucoseData = [...timeline.glucose];
     const hrData = [...timeline.heart_rate];
 
-    // Add forecast point 24 steps (2h) in future
-    const lastLabel = labels[labels.length - 1] || '00:00';
-    labels.push(`${lastLabel} (+2h)`);
-    glucoseData.push(null); // Keep array aligned for past
-    hrData.push(null);
+    // The forecast is 2 hours (24 x 5-min steps) ahead of the last reading. Add
+    // interim ticks every 30 minutes so the forecast point sits at the correct
+    // temporal distance on the x-axis (4 interim gaps + the +2h point), rather
+    // than one 5-min tick after "now".
+    const FORECAST_GAP_TICKS = 4;              // 4 ticks x 30 min = 2 hours
+    const lastTs = timeline.timestamps[timeline.timestamps.length - 1];
+    for (let i = 1; i <= FORECAST_GAP_TICKS; i++) {
+        const minutesAhead = i * 30;
+        if (i < FORECAST_GAP_TICKS) {
+            labels.push(forecastLabel(lastTs, minutesAhead));   // +30m, +60m, +90m
+        } else {
+            labels.push(`+2h`);                                 // forecast point
+        }
+        glucoseData.push(null);
+        hrData.push(null);
+    }
 
-    // Create forecast point dataset
+    // Forecast point at the last (+2h) position
     const forecastArray = new Array(labels.length).fill(null);
     forecastArray[forecastArray.length - 1] = prediction.predicted_glucose_2h;
-    // Link line from current reading to predicted reading
+    // Dashed connector spanning the full 2-hour gap from the last real reading
+    // to the predicted value.
     const forecastLineArray = new Array(labels.length).fill(null);
-    forecastLineArray[forecastLineArray.length - 2] = timeline.glucose[timeline.glucose.length - 1];
+    const lastRealIdx = timeline.glucose.length - 1;
+    forecastLineArray[lastRealIdx] = timeline.glucose[lastRealIdx];
     forecastLineArray[forecastLineArray.length - 1] = prediction.predicted_glucose_2h;
 
     const riskColor = RISK_COLORS[prediction.risk_level.toLowerCase()] || '#22c55e';
@@ -323,6 +359,7 @@ function renderTimelineChart(timeline, prediction) {
                     borderWidth: 2,
                     borderDash: [6, 4],
                     pointRadius: 0,
+                    spanGaps: true,   // draw the connector across the 2h gap
                     yAxisID: 'yGlucose',
                 },
                 {
@@ -429,14 +466,18 @@ function renderTimelineChart(timeline, prediction) {
 /**
  * Render Current Readings Bar
  */
-function renderCurrentReadings(timeline) {
+function renderCurrentReadings(timeline, patientState) {
     const container = document.getElementById('current-readings');
     const n = timeline.glucose.length;
     if (n === 0) return;
 
-    const curGlucose = timeline.glucose[n - 1];
-    const curHR = timeline.heart_rate[n - 1];
-    const curHRV = timeline.hrv_rmssd[n - 1];
+    // Prefer the authoritative /state values; fall back to the timeline tail.
+    const st = patientState || {};
+    const curGlucose = (st.current_glucose != null) ? Number(st.current_glucose.toFixed(1)) : timeline.glucose[n - 1];
+    const curHR = (st.current_heart_rate != null) ? Number(st.current_heart_rate.toFixed(1)) : timeline.heart_rate[n - 1];
+    const curHRV = (st.current_hrv != null) ? Number(st.current_hrv.toFixed(1)) : timeline.hrv_rmssd[n - 1];
+    const isSleeping = !!st.is_sleeping;
+
     // Steps last 1 hour (last 12 readings)
     const recentSteps = timeline.steps.slice(-12);
     const steps1h = recentSteps.reduce((a, b) => a + b, 0);
@@ -448,6 +489,7 @@ function renderCurrentReadings(timeline) {
 
     const hrColor = curHR > 100 ? '#f59e0b' : '#3b82f6';
     const hrvColor = curHRV < 25 ? '#f59e0b' : '#14b8a6';
+    const sleepTag = isSleeping ? ' 😴' : '';
 
     container.innerHTML = `
         <div class="vital-metric-card">
@@ -460,7 +502,7 @@ function renderCurrentReadings(timeline) {
         <div class="vital-metric-card">
             <span class="vital-icon">❤️</span>
             <div class="vital-details">
-                <span class="vital-label">Live Heart Rate</span>
+                <span class="vital-label">Live Heart Rate${sleepTag}</span>
                 <span class="vital-value" style="color:${hrColor};">${curHR} <span class="vital-unit">bpm</span></span>
             </div>
         </div>
@@ -683,31 +725,86 @@ function renderSimulator(simulation) {
 }
 
 // 6. Main Orchestration Flow
+function stopLiveRefresh() {
+    if (state.refreshTimer) {
+        clearInterval(state.refreshTimer);
+        state.refreshTimer = null;
+    }
+}
+
+/**
+ * Lightweight periodic poll. Re-fetches the authoritative /state and the
+ * prediction for the currently selected patient and updates the vitals bar and
+ * risk gauge in place, without the full-screen loader or re-rendering charts.
+ * This backs the "Engine Active" real-time framing.
+ */
+async function refreshLiveState() {
+    const patientId = state.currentPatientId;
+    if (!patientId) return;
+    try {
+        const [patientState, prediction] = await Promise.all([
+            loadState(patientId),
+            loadPrediction(patientId),
+        ]);
+        // Ignore if the user switched patients mid-flight.
+        if (state.currentPatientId !== patientId) return;
+
+        state.patientState = patientState;
+        state.prediction = prediction;
+
+        if (state.timeline) renderCurrentReadings(state.timeline, patientState);
+        renderRiskGauge(prediction);
+        updateConnectionBadge(true);
+    } catch (error) {
+        console.warn('Live refresh failed (will retry):', error);
+        updateConnectionBadge(false);
+    }
+}
+
+function updateConnectionBadge(online) {
+    const badge = document.getElementById('connection-badge');
+    if (!badge) return;
+    const label = badge.querySelector('.status-label');
+    badge.classList.toggle('offline', !online);
+    if (label) {
+        label.textContent = online
+            ? `Engine Active · live (${REFRESH_INTERVAL_MS / 1000}s)`
+            : 'Engine Reconnecting…';
+    }
+}
+
 async function loadPatient(patientId) {
     showLoading();
+    stopLiveRefresh();
     try {
         state.currentPatientId = patientId;
 
-        // Fetch all endpoints concurrently
-        const [profile, timeline, prediction, simulation] = await Promise.all([
+        // Fetch all endpoints concurrently (include authoritative /state)
+        const [profile, state_, timeline, prediction, simulation] = await Promise.all([
             loadPatientProfile(patientId),
+            loadState(patientId),
             loadTimeline(patientId, 12),
             loadPrediction(patientId),
             loadSimulation(patientId),
         ]);
 
         state.patientProfile = profile;
+        state.patientState = state_;
         state.timeline = timeline;
         state.prediction = prediction;
         state.simulation = simulation;
 
-        // Render all 5 sections
+        // Render all sections
         renderPatientCard(profile);
         renderTimelineChart(timeline, prediction);
-        renderCurrentReadings(timeline);
+        renderCurrentReadings(timeline, state_);
         renderRiskGauge(prediction);
         renderShapExplainer(prediction);
         renderSimulator(simulation);
+        updateConnectionBadge(true);
+
+        // Begin live polling for this patient.
+        state.refreshTimer = setInterval(refreshLiveState, REFRESH_INTERVAL_MS);
 
     } catch (error) {
         console.error('Failed to load patient data:', error);
