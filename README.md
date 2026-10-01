@@ -93,7 +93,9 @@ The system is engineered as an end-to-end six-layer pipeline:
 └───────────────────────────────────────────────────────────────────────────┘
 ```
 
-> The architecture diagram and presentation deck required for submission belong in [`docs/`](docs/) (add `architecture_diagram.pdf` and the slide deck before submitting).
+> Full architecture diagram: [`docs/architecture_diagram.pdf`](docs/architecture_diagram.pdf) (PNG preview below). Regenerate with `python docs/make_architecture_diagram.py`.
+
+![System Architecture](docs/architecture_diagram.png)
 
 ---
 
