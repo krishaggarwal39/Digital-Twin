@@ -155,6 +155,32 @@ def list_patients():
     return {"patients": patient_list, "count": len(patient_list)}
 
 
+def _read_json(filename: str) -> Optional[dict]:
+    """Load a JSON artifact from data/processed, returning None if absent."""
+    path = os.path.join(os.path.dirname(__file__), "..", "..", "data", "processed", filename)
+    if os.path.exists(path):
+        with open(path, "r") as f:
+            return json.load(f)
+    return None
+
+
+@app.get("/api/validation")
+def get_validation():
+    """Return the real-world clinical validation results.
+
+    Aggregates the honest sim-to-real study on the ShanghaiT2DM cohort:
+      - zero_shot: synthetic-trained model applied to real patients (the gap)
+      - real_adapted: the architecture trained + tested on real patients
+      - clinical: Clarke Error Grid and adverse-event lead-time
+    """
+    return {
+        "zero_shot": _read_json("real_world_results.json"),
+        "real_adapted": _read_json("real_world_trained_results.json"),
+        "clinical": _read_json("clinical_metrics_real.json"),
+        "synthetic": _read_json("evaluation_results.json"),
+    }
+
+
 @app.get("/api/patient/{patient_id}", response_model=PatientProfile)
 def get_patient(patient_id: str):
     """Return patient EHR profile."""
@@ -266,6 +292,12 @@ if os.path.isdir(dashboard_dir):
     js_dir = os.path.join(dashboard_dir, "js")
     if os.path.isdir(js_dir):
         app.mount("/js", StaticFiles(directory=js_dir), name="js")
+
+# Expose processed artifacts (SHAP summary, Clarke error grid, etc.) read-only
+# so the dashboard can display the validation plots.
+_assets_dir = os.path.join(os.path.dirname(__file__), "..", "..", "data", "processed")
+if os.path.isdir(_assets_dir):
+    app.mount("/assets", StaticFiles(directory=_assets_dir), name="assets")
 
 
 @app.get("/")
