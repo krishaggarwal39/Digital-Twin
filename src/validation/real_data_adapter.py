@@ -76,10 +76,8 @@ def parse_medications(agents: str) -> Dict[str, Any]:
     # Rapid/prandial analogs vs. basal/premix: aspart/lispro/R -> rapid component
     rapid_terms = ["aspart", "lispro", "novolin r", "humulin r", "insulin r"]
     med_insulin_rapid = int(any(k in t for k in rapid_terms))
-    med_insulin_basal = int(has_insulin and not (med_insulin_rapid and "r" == t.strip()[-1:]))
-    # If any insulin at all, assume at least basal coverage
-    if has_insulin:
-        med_insulin_basal = 1
+    # Any insulin regimen implies at least basal coverage.
+    med_insulin_basal = int(has_insulin)
 
     sglt2 = int(any(k in t for k in ["flozin", "dapagliflozin", "empagliflozin", "canagliflozin"]))
     glp1 = int(any(k in t for k in ["glutide", "liraglutide", "dulaglutide", "semaglutide", "exenatide"]))
@@ -179,9 +177,12 @@ def load_cgm_series(patient_file: str) -> pd.DataFrame:
     s = s.dropna(subset=["timestamp", "cgm_glucose"]).sort_values("timestamp")
     s = s.drop_duplicates(subset="timestamp").set_index("timestamp")
 
-    # Resample 15-min -> 5-min grid with linear interpolation
-    s = s.resample("5min").mean().interpolate(method="linear", limit=6)
-    s = s.dropna(subset=["cgm_glucose"]).reset_index()
+    # Resample onto a continuous 5-min grid. Interpolate only across SMALL gaps
+    # (<=30 min); larger gaps remain NaN so that build_windows never forms a
+    # window or 2-hour target that silently spans a real data gap (which would
+    # make the "2 hours ahead" target untrue in wall-clock time).
+    s = s.resample("5min").mean().interpolate(method="linear", limit=6, limit_area="inside")
+    s = s.reset_index()  # keep NaNs; build_windows enforces contiguity
     return s
 
 
@@ -212,6 +213,12 @@ def build_windows(
     for end in range(lookback, n - horizon, step):
         w = g[end - lookback:end]
         target = float(g[end + horizon])
+
+        # Contiguity guard: skip any window or 2-hour target that spans a data
+        # gap (NaN introduced by resampling across a real recording gap). This
+        # keeps every window continuous and every target a true 2h-ahead value.
+        if np.isnan(w).any() or np.isnan(target):
+            continue
 
         # Real CGM-derived dynamic features (match feature_pipeline exactly)
         cgm_mean = float(np.mean(w))
@@ -247,6 +254,9 @@ def build_windows(
     if not rows:
         return pd.DataFrame(columns=all_names + ["target_glucose_2h", "target_adverse"])
     df = pd.DataFrame(rows)
+    # Sanitize any inf/NaN the same way the training pipeline does, so the real
+    # feature table is guaranteed clean for inputs dirtier than this cohort.
+    df[all_names] = df[all_names].replace([np.inf, -np.inf], np.nan).fillna(0.0)
     return df[all_names + ["target_glucose_2h", "target_adverse"]]
 
 

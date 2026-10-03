@@ -2,25 +2,25 @@
   "dataset": "ShanghaiT2DM (Zhao et al., Scientific Data 2023)",
   "evaluation": "zero-shot transfer (trained on synthetic only, no fine-tuning)",
   "n_patients": 100,
-  "n_windows": 54875,
+  "n_windows": 54854,
   "real_target_mean_mg_dl": 139.6,
   "fused_model_real_world": {
     "rmse": 53.14,
     "mae": 40.61,
     "median_ae": 31.22,
-    "r2": -0.1091
+    "r2": -0.109
   },
   "persistence_baseline_real_world": {
     "rmse": 44.47,
     "mae": 31.65,
     "median_ae": 21.6,
-    "r2": 0.2235
+    "r2": 0.2232
   },
   "fused_improvement_vs_persistence_pct": -19.5,
   "adverse_classifier_real_world": {
     "auroc": 0.6838,
     "precision": 0.1279,
-    "recall": 0.0645,
+    "recall": 0.0646,
     "f1": 0.0858,
     "prevalence_pct": 4.4
   },

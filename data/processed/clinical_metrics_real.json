@@ -1,20 +1,20 @@
 {
   "dataset": "ShanghaiT2DM held-out real patients",
   "clarke_error_grid_pct": {
-    "A": 61.8,
-    "B": 35.91,
+    "A": 61.24,
+    "B": 36.45,
     "C": 0.06,
-    "D": 2.22,
+    "D": 2.24,
     "E": 0.01,
-    "A_plus_B": 97.71
+    "A_plus_B": 97.69
   },
-  "clinically_acceptable_A_plus_B_pct": 97.71,
+  "clinically_acceptable_A_plus_B_pct": 97.69,
   "lead_time_analysis": {
-    "n_true_adverse_windows": 264,
-    "detected": 187,
-    "detection_rate_pct": 70.8,
-    "forecast_lead_time_min": 120,
+    "n_true_adverse_windows": 263,
+    "detected": 172,
+    "detection_rate_pct": 65.4,
+    "forecast_horizon_min": 120,
     "operating_threshold": 0.5
   },
-  "interpretation": "97.71% of 2-hour forecasts fall in Clarke zones A+B (clinically acceptable). The adverse-event classifier flags 70.8% of true excursions a full 120 minutes in advance."
+  "interpretation": "97.69% of 2-hour forecasts fall in Clarke zones A+B (clinically acceptable). The adverse-event classifier flags 65.4% of true excursions a full 120 minutes in advance."
 }

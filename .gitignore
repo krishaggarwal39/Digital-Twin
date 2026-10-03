@@ -36,3 +36,6 @@ data/real_shanghai/
 *.joblib
 *.pkl
 node_modules/
+
+# Internal agent review artifacts
+.agents/

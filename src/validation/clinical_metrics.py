@@ -129,7 +129,11 @@ def lead_time_analysis(
         "n_true_adverse_windows": n_true,
         "detected": caught,
         "detection_rate_pct": round(caught / n_true * 100, 1) if n_true else 0.0,
-        "forecast_lead_time_min": horizon_min,       # every correct flag warns this far ahead
+        # The prediction horizon is fixed by design: the model forecasts the
+        # adverse event `horizon_min` minutes ahead, so every true-positive flag
+        # is by construction a warning that far in advance. This is the forecast
+        # horizon, not an empirically-varying lead-time distribution.
+        "forecast_horizon_min": horizon_min,
         "operating_threshold": threshold,
     }
 
@@ -165,7 +169,7 @@ def main() -> Dict:
             f"{grid['A_plus_B']}% of 2-hour forecasts fall in Clarke zones A+B "
             f"(clinically acceptable). The adverse-event classifier flags "
             f"{lead['detection_rate_pct']}% of true excursions a full "
-            f"{lead['forecast_lead_time_min']} minutes in advance."
+            f"{lead['forecast_horizon_min']} minutes in advance."
         ),
     }
     with open(os.path.join(PROCESSED, "clinical_metrics_real.json"), "w") as f:
@@ -181,7 +185,7 @@ def main() -> Dict:
     print("-" * 60)
     print(f"True adverse windows: {lead['n_true_adverse_windows']} | "
           f"detected: {lead['detected']} ({lead['detection_rate_pct']}%)")
-    print(f"Forecast lead time: {lead['forecast_lead_time_min']} minutes")
+    print(f"Forecast horizon: {lead['forecast_horizon_min']} minutes ahead")
     print(f"Error grid plot: {out_png}")
     print("=" * 60)
     return results

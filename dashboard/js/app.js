@@ -761,7 +761,7 @@ function renderValidation(v) {
     const r2 = (raReg.r2 != null) ? raReg.r2.toFixed(3) : '—';
     const rmse = (raReg.rmse != null) ? raReg.rmse : '—';
     const auroc = (raClf.auroc != null) ? raClf.auroc.toFixed(3) : '—';
-    const leadMin = lead.forecast_lead_time_min || 120;
+    const leadMin = lead.forecast_horizon_min || lead.forecast_lead_time_min || 120;
     const detect = (lead.detection_rate_pct != null) ? `${lead.detection_rate_pct}%` : '—';
 
     container.innerHTML = `

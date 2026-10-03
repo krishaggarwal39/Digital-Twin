@@ -13,7 +13,7 @@
 > ### A preventive, patient-empowering twin — not another reactive monitor
 > Aligned with Happiest Health's mission to **"embrace wellness as a way of life"** and bring **longevity and preventive, away-from-the-hospital care** to everyone, this digital twin helps a person with Type 2 diabetes see a dangerous glucose excursion **two hours before it happens** — and test, on their own virtual twin, whether a short walk or a smaller meal will prevent it. Care shifts from reacting in the clinic to **preventing at home.**
 
-> **✅ Validated on 100 real Type 2 diabetes patients** (ShanghaiT2DM, *Nature Scientific Data* 2023): **97.7% of 2-hour forecasts fall in Clarke Error Grid zones A+B** (clinically acceptable), and the model warns of adverse excursions a full **120 minutes in advance** — not only on our synthetic cohort, but on real, unseen patients.
+> **✅ Validated on 100 real Type 2 diabetes patients** (ShanghaiT2DM, *Nature Scientific Data* 2023): **97.7% of 2-hour forecasts fall in Clarke Error Grid zones A+B** (clinically acceptable), at a **120-minute forecast horizon** — not only on our synthetic cohort, but on real, unseen patients.
 
 ---
 
@@ -188,19 +188,21 @@ A model trained only on a simulator rarely transfers perfectly to real patients,
 
 | Setting | RMSE (mg/dL) | $R^2$ | Note |
 |:---|:---:|:---:|:---|
-| Synthetic held-out | 17.37 | 0.805 | in-distribution |
-| **Zero-shot → real** (no retraining) | 53.14 | −0.11 | the raw sim-to-real gap, reported transparently |
-| Persistence on real | 45.35 | 0.036 | the fair real-world bar (2-hour prediction is genuinely hard) |
-| **Twin architecture adapted to real** | **34.73** | **0.435** | trained + tested on real patients, strict patient-level split |
+| Synthetic held-out | 17.37 | 0.805 | in-distribution (synthetic test patients) |
+| **Zero-shot → real** (no retraining) | 53.14 | −0.11 | all 100 real patients; the raw sim-to-real gap, reported transparently |
+| Persistence on real | 45.34 | 0.034 | fair real-world bar, 15 held-out test patients (2-hour prediction is genuinely hard) |
+| **Twin architecture adapted to real** | **34.85** | **0.430** | 15 held-out test patients, strict patient-level split |
+
+> *Rows are on different populations by design: the zero-shot row is evaluated on all 100 real patients (no training needed), while the persistence and adapted rows are on the 15 held-out test patients from the patient-level split. On those same 100 patients, the zero-shot persistence baseline is 44.47 mg/dL RMSE.*
 
 **Why zero-shot drops:** the Shanghai cohort provides real CGM + EHR but no consumer-wearable streams, so ~60% of the fused model's inputs are unavailable, and real glucose is ~2.7× more volatile than the simulator produced. We diagnosed this rather than papering over it.
 
 ### 2. The architecture works on real patients when adapted
 Trained on the CGM + EHR features that genuinely exist in the Shanghai data (strict **patient-level** 70/15/15 split, no patient in both train and test):
 
-- **RMSE 34.73 mg/dL, $R^2$ 0.435** on held-out real patients
-- **Beats the persistence baseline by 23.4%** — real evidence the twin learns true multi-hour dynamics on real data
-- **Adverse-event classifier: AUROC 0.887, recall 0.71** on real rare excursions
+- **RMSE 34.85 mg/dL, $R^2$ 0.430** on held-out real patients
+- **Beats the persistence baseline by 23.1%** — real evidence the twin learns true multi-hour dynamics on real data
+- **Adverse-event classifier: AUROC 0.879** on real rare excursions
 
 ### 3. Clinical safety — Clarke Error Grid
 The gold-standard safety metric for glucose prediction. On held-out real patients:
@@ -209,14 +211,14 @@ The gold-standard safety metric for glucose prediction. On held-out real patient
 
 | Zone | % | Meaning |
 |:---:|:---:|:---|
-| **A** | 61.8% | Clinically accurate |
-| **B** | 35.9% | Benign (no harmful treatment) |
+| **A** | 61.2% | Clinically accurate |
+| **B** | 36.5% | Benign (no harmful treatment) |
 | C | 0.06% | Overcorrection |
-| D | 2.22% | Failure to detect |
+| D | 2.24% | Failure to detect |
 | E | 0.01% | Erroneous |
 | **A + B** | **97.7%** | **Clinically acceptable** |
 
-**97.7% of 2-hour forecasts are clinically acceptable, and the system flags 70.8% of true adverse excursions a full 120 minutes in advance** — the proactive lead time that makes prevention possible.
+**97.7% of 2-hour forecasts are clinically acceptable, and the system flags 65% of true adverse excursions at a fixed ~2-hour (125-minute) forecast horizon** — the proactive lead time that makes prevention possible.
 
 > Reproduce: `python -m src.validation.real_data_adapter` → `python -m src.validation.train_real_world` → `python -m src.validation.clinical_metrics`. All numbers come from `data/processed/real_world_trained_results.json` and `clinical_metrics_real.json`.
 
