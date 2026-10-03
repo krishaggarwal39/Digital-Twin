@@ -40,6 +40,9 @@ let state = {
     timelineChart: null,      // Chart.js instance
     scenarioCharts: [],       // Array of Chart.js instances
     refreshTimer: null,       // live auto-refresh interval handle
+    customChart: null,        // interactive What-If chart instance
+    customSimSeq: 0,          // monotonic id to drop out-of-order custom-sim responses
+    whatifWired: false,       // ensure control listeners are attached only once
 };
 
 // Live refresh cadence for the lightweight state/prediction poll (ms).
@@ -75,11 +78,11 @@ async function loadPrediction(patientId) {
     return await fetchJSON(`${API_BASE}/api/patient/${patientId}/predict`);
 }
 
-async function loadSimulation(patientId) {
+async function loadSimulation(patientId, body = {}) {
     return await fetchJSON(`${API_BASE}/api/patient/${patientId}/simulate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({})
+        body: JSON.stringify(body)
     });
 }
 
@@ -728,6 +731,192 @@ function renderSimulator(simulation) {
     });
 }
 
+/* ===== Interactive What-If simulator ===== */
+
+const INTENSITY_LABELS = { 0.2: 'Light', 0.3: 'Light', 0.4: 'Moderate', 0.5: 'Moderate', 0.6: 'Brisk', 0.7: 'Vigorous', 0.8: 'Vigorous', 0.9: 'Intense' };
+
+function _val(id) { const el = document.getElementById(id); return el ? parseFloat(el.value) : NaN; }
+
+/** Read the control panel into a {type, label, interventions, reference_meal_carbs} payload. */
+function readWhatIfControls() {
+    const typeBtn = document.querySelector('#whatif-type .seg-btn.active');
+    const type = typeBtn ? typeBtn.dataset.type : 'exercise';
+    const mealCarbs = _val('ctl-meal-carbs');
+    const body = { reference_meal_carbs: mealCarbs, reference_meal_gi: 0.6, interventions: [] };
+    let label = '';
+
+    if (type === 'exercise') {
+        const dur = _val('ctl-ex-duration');
+        const inten = _val('ctl-ex-intensity');
+        label = `${dur}-min ${(INTENSITY_LABELS[inten] || 'Moderate').toLowerCase()} walk`;
+        body.interventions.push({ name: label, intervention_type: 'exercise', duration: dur, intensity: inten });
+    } else if (type === 'meal') {
+        const swap = _val('ctl-swap-carbs');
+        label = `Meal swap to ${swap}g carbs`;
+        body.interventions.push({ name: label, intervention_type: 'meal', carbs: swap, gi_index: 0.4 });
+    } else {
+        const dose = _val('ctl-insulin-dose');
+        label = `+${dose.toFixed(1)}U rapid insulin`;
+        body.interventions.push({ name: label, intervention_type: 'insulin', dose: dose, insulin_type: 'rapid' });
+    }
+    return { type, label, body };
+}
+
+/** Sync the slider value labels and show/hide fields for the active type. */
+function syncWhatIfUI() {
+    const typeBtn = document.querySelector('#whatif-type .seg-btn.active');
+    const type = typeBtn ? typeBtn.dataset.type : 'exercise';
+
+    const mc = document.getElementById('val-meal-carbs');
+    if (mc) mc.textContent = `${_val('ctl-meal-carbs')} g`;
+    const ed = document.getElementById('val-ex-duration');
+    if (ed) ed.textContent = `${_val('ctl-ex-duration')} min`;
+    const ei = document.getElementById('val-ex-intensity');
+    if (ei) ei.textContent = INTENSITY_LABELS[_val('ctl-ex-intensity')] || 'Moderate';
+    const sc = document.getElementById('val-swap-carbs');
+    if (sc) sc.textContent = `${_val('ctl-swap-carbs')} g`;
+    const id_ = document.getElementById('val-insulin-dose');
+    if (id_) id_.textContent = `${_val('ctl-insulin-dose').toFixed(1)} U`;
+
+    document.querySelectorAll('.type-exercise').forEach(e => { e.hidden = (type !== 'exercise'); });
+    document.querySelectorAll('.type-meal').forEach(e => { e.hidden = (type !== 'meal'); });
+    document.querySelectorAll('.type-insulin').forEach(e => { e.hidden = (type !== 'insulin'); });
+}
+
+/** Attach control listeners exactly once. */
+function wireWhatIfControls() {
+    if (state.whatifWired) return;
+    const panel = document.getElementById('whatif-controls');
+    if (!panel) return;
+
+    document.querySelectorAll('#whatif-type .seg-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('#whatif-type .seg-btn').forEach(b => {
+                b.classList.remove('active'); b.setAttribute('aria-selected', 'false');
+            });
+            btn.classList.add('active'); btn.setAttribute('aria-selected', 'true');
+            syncWhatIfUI();
+            runCustomSimulation();
+        });
+    });
+
+    panel.querySelectorAll('input[type="range"]').forEach(sl => {
+        sl.addEventListener('input', syncWhatIfUI);              // instant label feedback
+        sl.addEventListener('change', debouncedCustomSim);        // simulate when the user releases
+    });
+
+    const btn = document.getElementById('btn-simulate');
+    if (btn) btn.addEventListener('click', runCustomSimulation);
+
+    state.whatifWired = true;
+}
+
+let _customSimTimer = null;
+function debouncedCustomSim() {
+    clearTimeout(_customSimTimer);
+    _customSimTimer = setTimeout(runCustomSimulation, 250);
+}
+
+async function runCustomSimulation() {
+    const patientId = state.currentPatientId;
+    if (!patientId) return;
+    const { label, body } = readWhatIfControls();
+    const seq = ++state.customSimSeq;         // tag this request
+    const btn = document.getElementById('btn-simulate');
+    if (btn) { btn.disabled = true; btn.textContent = 'Simulating…'; }
+
+    try {
+        const sim = await loadSimulation(patientId, body);
+        // Drop if a newer request started, or the patient changed mid-flight.
+        if (seq !== state.customSimSeq || patientId !== state.currentPatientId) return;
+        renderCustomSim(sim, label);
+    } catch (e) {
+        console.warn('Custom simulation failed:', e);
+        const m = document.getElementById('custom-sim-metrics');
+        if (m) m.innerHTML = '<p style="color:var(--text-muted);font-size:12px;">Simulation unavailable.</p>';
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = '▶ Simulate on twin'; }
+    }
+}
+
+/** Render baseline vs the single custom intervention: overlay chart + metric deltas. */
+function renderCustomSim(sim, label) {
+    const scenarios = sim.scenarios || [];
+    if (scenarios.length < 2) return;          // need baseline + 1 intervention
+    const base = scenarios[0];
+    const interv = scenarios[1];
+
+    const canvas = document.getElementById('custom-sim-chart');
+    if (!canvas) return;
+    if (state.customChart) { state.customChart.destroy(); state.customChart = null; }
+
+    const labels = base.trajectory.map(p => `+${p.time_offset_min}m`);
+    const baseData = base.trajectory.map(p => p.glucose);
+    const intervData = interv.trajectory.map(p => p.glucose);
+    const intervColor = RISK_COLORS[interv.risk_level.toLowerCase()] || '#14b8a6';
+
+    state.customChart = new Chart(canvas, {
+        type: 'line',
+        data: {
+            labels,
+            datasets: [
+                { label: 'Baseline (usual meal, no action)', data: baseData,
+                  borderColor: '#94a3b8', borderWidth: 2, borderDash: [5, 4], pointRadius: 0, tension: 0.3 },
+                { label: label, data: intervData,
+                  borderColor: intervColor, backgroundColor: `${intervColor}1a`,
+                  borderWidth: 2.4, pointRadius: 0, tension: 0.3, fill: true },
+            ],
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                legend: { display: true, labels: { color: '#cbd5e1', boxWidth: 12, font: { size: 11 } } },
+                tooltip: { callbacks: { label: (c) => ` ${c.dataset.label}: ${c.parsed.y} mg/dL` } },
+            },
+            scales: {
+                x: { ticks: { color: '#94a3b8', maxTicksLimit: 7, font: { size: 10 } },
+                     grid: { color: 'rgba(255,255,255,0.04)' } },
+                y: { title: { display: true, text: 'Glucose (mg/dL)', color: '#94a3b8', font: { size: 10 } },
+                     ticks: { color: '#94a3b8', font: { size: 10 } },
+                     grid: { color: 'rgba(255,255,255,0.05)' },
+                     suggestedMin: 70, suggestedMax: 260 },
+            },
+        },
+    });
+
+    // Metric deltas (intervention vs baseline)
+    const peakDelta = interv.peak_glucose - base.peak_glucose;
+    const tirDelta = interv.time_in_range_pct - base.time_in_range_pct;
+    const fmt = (d, unit, betterWhenNegative) => {
+        const better = betterWhenNegative ? d < 0 : d > 0;
+        const cls = d === 0 ? '' : (better ? 'csm-better' : 'csm-worse');
+        const sign = d > 0 ? '+' : '';
+        return `<span class="csm-delta ${cls}">${sign}${d.toFixed(1)}${unit}</span>`;
+    };
+    const m = document.getElementById('custom-sim-metrics');
+    if (m) {
+        m.innerHTML = `
+            <div class="csm-row">
+                <span class="csm-label">Peak glucose</span>
+                <span class="csm-value">${interv.peak_glucose} <span style="font-size:11px;">mg/dL</span>
+                    ${fmt(peakDelta, ' mg/dL', true)}</span>
+            </div>
+            <div class="csm-row">
+                <span class="csm-label">Time in range</span>
+                <span class="csm-value">${interv.time_in_range_pct}%
+                    ${fmt(tirDelta, '%', false)}</span>
+            </div>
+            <div class="csm-row">
+                <span class="csm-label">Danger zone (&gt;250)</span>
+                <span class="csm-value" style="color:${interv.enters_danger_zone ? 'var(--danger)' : 'var(--success)'};">
+                    ${interv.enters_danger_zone ? '⚠️ Yes' : '✅ Avoided'}</span>
+            </div>
+            ${getRiskBadgeHTML(interv.risk_level)}
+        `;
+    }
+}
+
 /**
  * Render Section 6: Real-World Clinical Validation (cohort-level, loaded once).
  */
@@ -887,6 +1076,13 @@ async function loadPatient(patientId) {
         renderShapExplainer(prediction);
         renderSimulator(simulation);
         updateConnectionBadge(true);
+
+        // Interactive What-If: wire controls once, sync labels, run an initial
+        // custom simulation for this patient (reset any prior custom chart first).
+        wireWhatIfControls();
+        syncWhatIfUI();
+        if (state.customChart) { state.customChart.destroy(); state.customChart = null; }
+        runCustomSimulation();
 
         // Begin live polling for this patient.
         state.refreshTimer = setInterval(refreshLiveState, REFRESH_INTERVAL_MS);

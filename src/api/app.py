@@ -111,6 +111,8 @@ class PredictionResponse(BaseModel):
 
 class SimulationRequest(BaseModel):
     interventions: Optional[List[dict]] = None  # If None, use defaults
+    reference_meal_carbs: Optional[float] = None  # anticipated meal (g); None -> engine default (55)
+    reference_meal_gi: Optional[float] = None     # anticipated meal GI 0-1; None -> engine default (0.6)
 
 
 class TrajectoryPoint(BaseModel):
@@ -262,7 +264,15 @@ def simulate(patient_id: str, request: SimulationRequest = SimulationRequest()):
                 )
             )
 
-    results = twin.simulate(interventions=interventions)
+    # Only override the engine's reference-meal defaults when the client sends them,
+    # so an empty POST {} keeps the exact previous behavior.
+    sim_kwargs: Dict[str, Any] = {"interventions": interventions}
+    if request.reference_meal_carbs is not None:
+        sim_kwargs["reference_meal_carbs"] = float(request.reference_meal_carbs)
+    if request.reference_meal_gi is not None:
+        sim_kwargs["reference_meal_gi"] = float(request.reference_meal_gi)
+
+    results = twin.simulate(**sim_kwargs)
 
     scenarios = []
     for r in results:

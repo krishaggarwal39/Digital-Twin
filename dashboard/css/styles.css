@@ -1066,3 +1066,100 @@ body {
 .val-row-muted td { color: var(--text-muted); }
 .val-row-win td { color: var(--accent-teal); }
 .val-note { font-size: 11.5px; color: var(--text-secondary); margin-top: 12px; line-height: 1.6; }
+
+/* ===== Interactive What-If controls ===== */
+.whatif-controls {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+.whatif-controls-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  align-items: flex-end;
+}
+.whatif-controls-row + .whatif-controls-row { margin-top: 14px; }
+
+.whatif-field { display: flex; flex-direction: column; gap: 6px; }
+.slider-field { flex: 1 1 170px; min-width: 150px; }
+.whatif-label {
+  font-size: 11px; font-weight: 600; color: var(--text-secondary);
+  display: flex; justify-content: space-between; align-items: center; gap: 8px;
+}
+.slider-val {
+  font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 700;
+  color: var(--accent-teal);
+  background: rgba(20,184,166,0.12); padding: 1px 7px; border-radius: 6px;
+}
+
+/* Segmented control */
+.whatif-segmented { display: inline-flex; background: rgba(255,255,255,0.04); border-radius: 10px; padding: 3px; gap: 2px; }
+.seg-btn {
+  border: none; background: transparent; color: var(--text-secondary);
+  font-size: 12px; font-weight: 600; padding: 7px 14px; border-radius: 8px;
+  cursor: pointer; transition: background 0.2s, color 0.2s;
+}
+.seg-btn:hover { color: var(--text-primary); }
+.seg-btn.active { background: var(--accent-teal); color: #06201d; }
+
+/* Range inputs */
+.whatif-field input[type="range"] {
+  -webkit-appearance: none; appearance: none;
+  width: 100%; height: 5px; border-radius: 4px;
+  background: rgba(255,255,255,0.12); outline: none; cursor: pointer;
+}
+.whatif-field input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 16px; height: 16px; border-radius: 50%;
+  background: var(--accent-teal); border: 2px solid #0b1220;
+  box-shadow: 0 0 6px rgba(20,184,166,0.6);
+}
+.whatif-field input[type="range"]::-moz-range-thumb {
+  width: 16px; height: 16px; border-radius: 50%;
+  background: var(--accent-teal); border: 2px solid #0b1220;
+}
+
+.whatif-action { flex: 0 0 auto; }
+.whatif-btn {
+  background: var(--accent-teal); color: #06201d;
+  border: none; border-radius: 9px; padding: 10px 18px;
+  font-size: 13px; font-weight: 700; cursor: pointer;
+  transition: filter 0.2s, transform 0.1s;
+}
+.whatif-btn:hover { filter: brightness(1.08); }
+.whatif-btn:active { transform: translateY(1px); }
+.whatif-btn:disabled { opacity: 0.6; cursor: progress; }
+
+/* Custom simulation result */
+.custom-sim-result {
+  display: grid; grid-template-columns: 2fr 1fr; gap: 16px;
+  margin-bottom: 18px; align-items: stretch;
+}
+@media (max-width: 820px) {
+  .custom-sim-result { grid-template-columns: 1fr; }
+  .whatif-controls-row { gap: 12px; }
+}
+.custom-sim-chart-wrap {
+  position: relative; height: 240px;
+  background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 12px; padding: 10px;
+}
+.custom-sim-metrics { display: flex; flex-direction: column; gap: 10px; justify-content: center; }
+.csm-row {
+  display: flex; justify-content: space-between; align-items: baseline;
+  padding: 10px 12px; background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.06); border-radius: 10px;
+}
+.csm-label { font-size: 11px; color: var(--text-secondary); font-weight: 600; }
+.csm-value { font-family: 'JetBrains Mono', monospace; font-size: 15px; font-weight: 700; }
+.csm-delta { font-size: 11px; font-weight: 700; margin-left: 6px; }
+.csm-better { color: var(--success); }
+.csm-worse { color: var(--danger); }
+
+.whatif-preset-label {
+  font-size: 11px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;
+  color: var(--text-muted); margin: 4px 0 10px;
+}

@@ -155,8 +155,76 @@
           </div>
           <span class="badge badge-teal">Twin Simulation Active</span>
         </div>
+
+        <!-- Interactive custom intervention controls -->
+        <div id="whatif-controls" class="whatif-controls">
+          <div class="whatif-controls-row">
+            <div class="whatif-field">
+              <label class="whatif-label">Intervention</label>
+              <div class="whatif-segmented" id="whatif-type" role="tablist" aria-label="Intervention type">
+                <button class="seg-btn active" data-type="exercise" role="tab" aria-selected="true">🚶 Walk</button>
+                <button class="seg-btn" data-type="meal" role="tab" aria-selected="false">🍽️ Meal swap</button>
+                <button class="seg-btn" data-type="insulin" role="tab" aria-selected="false">💉 Insulin</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="whatif-controls-row">
+            <!-- Shared: the anticipated upcoming meal (baseline) -->
+            <div class="whatif-field slider-field">
+              <label class="whatif-label" for="ctl-meal-carbs">Upcoming meal
+                <span class="slider-val" id="val-meal-carbs">55 g</span>
+              </label>
+              <input type="range" id="ctl-meal-carbs" min="10" max="100" step="5" value="55" aria-label="Upcoming meal carbohydrates in grams">
+            </div>
+
+            <!-- Exercise fields -->
+            <div class="whatif-field slider-field type-exercise">
+              <label class="whatif-label" for="ctl-ex-duration">Walk duration
+                <span class="slider-val" id="val-ex-duration">20 min</span>
+              </label>
+              <input type="range" id="ctl-ex-duration" min="10" max="45" step="5" value="20" aria-label="Walk duration in minutes">
+            </div>
+            <div class="whatif-field slider-field type-exercise">
+              <label class="whatif-label" for="ctl-ex-intensity">Intensity
+                <span class="slider-val" id="val-ex-intensity">Moderate</span>
+              </label>
+              <input type="range" id="ctl-ex-intensity" min="0.2" max="0.9" step="0.1" value="0.5" aria-label="Walk intensity">
+            </div>
+
+            <!-- Meal-swap fields -->
+            <div class="whatif-field slider-field type-meal" hidden>
+              <label class="whatif-label" for="ctl-swap-carbs">Swap to
+                <span class="slider-val" id="val-swap-carbs">25 g</span>
+              </label>
+              <input type="range" id="ctl-swap-carbs" min="5" max="90" step="5" value="25" aria-label="Swapped meal carbohydrates in grams">
+            </div>
+
+            <!-- Insulin fields -->
+            <div class="whatif-field slider-field type-insulin" hidden>
+              <label class="whatif-label" for="ctl-insulin-dose">Rapid insulin
+                <span class="slider-val" id="val-insulin-dose">2.0 U</span>
+              </label>
+              <input type="range" id="ctl-insulin-dose" min="0.5" max="8" step="0.5" value="2" aria-label="Rapid insulin dose in units">
+            </div>
+
+            <div class="whatif-field whatif-action">
+              <button id="btn-simulate" class="whatif-btn" type="button">▶ Simulate on twin</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Custom simulation result: baseline vs the chosen intervention -->
+        <div id="custom-sim-result" class="custom-sim-result" aria-live="polite">
+          <div class="custom-sim-chart-wrap">
+            <canvas id="custom-sim-chart"></canvas>
+          </div>
+          <div id="custom-sim-metrics" class="custom-sim-metrics"></div>
+        </div>
+
+        <div class="whatif-preset-label">Preset scenarios</div>
         <div id="simulator-container" class="scenario-grid">
-          <!-- 4 Scenario Cards populated by app.js -->
+          <!-- Preset scenario cards populated by app.js -->
         </div>
       </section>
 
