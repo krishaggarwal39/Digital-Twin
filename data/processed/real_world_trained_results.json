@@ -1,0 +1,75 @@
+{
+  "dataset": "ShanghaiT2DM (Zhao et al., Scientific Data 2023)",
+  "evaluation": "trained AND tested on real patients, strict patient-level split",
+  "features_used": {
+    "n": 29,
+    "static": [
+      "age",
+      "sex_male",
+      "bmi",
+      "hba1c",
+      "fasting_glucose",
+      "egfr",
+      "ldl",
+      "hdl",
+      "years_with_t2dm",
+      "comorbidity_count",
+      "med_metformin",
+      "med_insulin_basal",
+      "med_insulin_rapid",
+      "med_sglt2i",
+      "med_glp1ra",
+      "insulin_total_daily_dose"
+    ],
+    "dynamic": [
+      "cgm_mean_4h",
+      "cgm_std_4h",
+      "cgm_min_4h",
+      "cgm_max_4h",
+      "cgm_current",
+      "cgm_cv_4h",
+      "cgm_roc_15min",
+      "cgm_roc_30min",
+      "cgm_acceleration",
+      "cgm_pct_above_180",
+      "hour_sin",
+      "hour_cos",
+      "is_sleep_period"
+    ]
+  },
+  "n_patients": {
+    "train": 70,
+    "val": 15,
+    "test": 15
+  },
+  "n_windows": {
+    "train": 37172,
+    "val": 8366,
+    "test": 9337
+  },
+  "real_adapted_model": {
+    "rmse": 34.73,
+    "mae": 25.32,
+    "median_ae": 18.78,
+    "r2": 0.4348
+  },
+  "persistence_baseline": {
+    "rmse": 45.35,
+    "mae": 31.29,
+    "median_ae": 20.4,
+    "r2": 0.0361
+  },
+  "improvement_vs_persistence_pct": 23.4,
+  "adverse_classifier": {
+    "auroc": 0.8873,
+    "precision": 0.174,
+    "recall": 0.7083,
+    "f1": 0.2793,
+    "prevalence_pct": 2.83
+  },
+  "notes": [
+    "Uses only CGM + EHR features that genuinely exist in the Shanghai data (no neutralized wearable placeholders).",
+    "Strict patient-level split: no patient appears in both train and test.",
+    "Demonstrates the twin architecture transfers to real patients when adapted, complementing the honestly-reported zero-shot sim-to-real gap."
+  ]
+}

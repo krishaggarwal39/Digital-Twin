@@ -1,0 +1,37 @@
+{
+  "dataset": "ShanghaiT2DM (Zhao et al., Scientific Data 2023)",
+  "evaluation": "zero-shot transfer (trained on synthetic only, no fine-tuning)",
+  "n_patients": 100,
+  "n_windows": 54875,
+  "real_target_mean_mg_dl": 139.6,
+  "fused_model_real_world": {
+    "rmse": 53.14,
+    "mae": 40.61,
+    "median_ae": 31.22,
+    "r2": -0.1091
+  },
+  "persistence_baseline_real_world": {
+    "rmse": 44.47,
+    "mae": 31.65,
+    "median_ae": 21.6,
+    "r2": 0.2235
+  },
+  "fused_improvement_vs_persistence_pct": -19.5,
+  "adverse_classifier_real_world": {
+    "auroc": 0.6838,
+    "precision": 0.1279,
+    "recall": 0.0645,
+    "f1": 0.0858,
+    "prevalence_pct": 4.4
+  },
+  "sim_to_real_gap": {
+    "synthetic_test_rmse": 17.37,
+    "real_world_rmse": 53.14,
+    "absolute_gap_mg_dl": 35.77
+  },
+  "notes": [
+    "Models were trained exclusively on synthetic Bergman-ODE data and evaluated on real patients with no retraining.",
+    "Shanghai provides real CGM + EHR but no consumer-wearable streams; absent wearable features were neutralized to training medians, so this validates the CGM + EHR pathway of the fused model.",
+    "The persistence baseline is computed on the same real windows and is the fair bar a useful 2-hour forecaster must beat."
+  ]
+}
