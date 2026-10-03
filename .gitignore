@@ -22,6 +22,16 @@ data/processed/*.json
 !data/processed/split_info.json
 !data/processed/xgb_fused_regressor.json
 !data/processed/xgb_fused_classifier.json
+# Real-world validation artifacts (small; keep so results are verifiable)
+!data/processed/real_world_results.json
+!data/processed/real_world_trained_results.json
+!data/processed/clinical_metrics_real.json
+!data/processed/xgb_real_regressor.json
+!data/processed/xgb_real_classifier.json
+
+# Raw third-party real dataset: not redistributed in-repo; fetch via
+# scripts/download_shanghai.py (ShanghaiT2DM, figshare, open for research).
+data/real_shanghai/
 
 *.joblib
 *.pkl
