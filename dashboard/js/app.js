@@ -5,7 +5,11 @@
  */
 
 // 1. Constants and Configuration
-const API_BASE = window.location.origin.includes('localhost') || window.location.origin.includes('127.0.0.1')
+// The dashboard is served by the same FastAPI service that exposes the API, so
+// the API shares the dashboard's origin — on localhost AND on any deployed host
+// (e.g. Render). Fall back to localhost:8000 only when opened directly from a
+// file:// path with no HTTP origin.
+const API_BASE = (window.location.origin && window.location.origin.startsWith('http'))
     ? window.location.origin
     : 'http://localhost:8000';
 
