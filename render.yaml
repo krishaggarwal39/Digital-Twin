@@ -1,0 +1,23 @@
+# Render deployment for the Cardiometabolic Digital Twin.
+# A single FastAPI web service serves both the REST API and the dashboard.
+#
+# One-time setup on render.com:
+#   1. New  ->  Web Service  ->  connect this GitHub repo
+#   2. Render auto-detects this render.yaml; click Apply
+#   3. First build takes a few minutes (installs numpy/scipy/xgboost/shap wheels)
+#
+# Everything the service needs at runtime (trained models, the demo patient
+# cohort, validation artifacts) is committed to the repo, so no data generation
+# runs at build time -> fast, deterministic deploys.
+services:
+  - type: web
+    name: cardiometabolic-digital-twin
+    runtime: python
+    plan: free
+    region: oregon
+    buildCommand: "pip install --upgrade pip && pip install -r requirements.txt"
+    startCommand: "python src/api/app.py"
+    healthCheckPath: /api/patients
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.6"

@@ -17,6 +17,9 @@
 
 ---
 
+## 🌐 Live Demo
+> ▶️ **[Try the live dashboard](YOUR_RENDER_URL_HERE)** — interact with the digital twin in your browser: pick a patient, see the 2-hour forecast and SHAP drivers, and run the interactive What-If simulator. *(Free-tier host may take ~30s to wake on first visit.)*
+
 ## 📹 Demo Video
 > 📹 **[Watch the 20-minute demo video](YOUR_YOUTUBE_LINK_HERE)** *(Walkthrough of physiological ODE models, machine learning pipeline, SHAP explainability, real-time What-If clinical counterfactual simulation, and real-world validation on the ShanghaiT2DM cohort)*
 
@@ -288,6 +291,28 @@ python src/api/app.py
 Open your browser and navigate to:
 - **Interactive Dashboard:** [http://localhost:8000/](http://localhost:8000/) or [http://localhost:8000/dashboard/index.html](http://localhost:8000/dashboard/index.html)
 - **Interactive Swagger API Docs:** [http://localhost:8000/docs](http://localhost:8000/docs)
+
+> The repository ships a ready-to-run demo cohort (a curated 42-patient subset
+> spanning the full HbA1c severity range, plus the trained models and all
+> validation artifacts), so steps 1–4 are optional — `python src/api/app.py`
+> works immediately on a fresh clone. Run the data/feature/training scripts only
+> to regenerate the full 300-patient cohort.
+
+### 6. Deploy to the Cloud (Render)
+
+The project includes a [`render.yaml`](render.yaml) for one-click deployment as a
+single web service (API + dashboard):
+
+1. Push the repo to GitHub (already done).
+2. On [render.com](https://render.com): **New → Web Service → connect this repo**.
+3. Render auto-detects `render.yaml`; click **Apply**. The first build installs
+   the scientific stack (a few minutes); subsequent deploys are fast.
+4. The service binds to Render's injected `$PORT`; everything it needs at runtime
+   (models, demo cohort, validation artifacts) is committed, so no data is
+   generated at build time.
+
+The dashboard's `API_BASE` auto-detects the host, so it works on both
+`localhost` and the deployed URL with no changes.
 
 ---
 

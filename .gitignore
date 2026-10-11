@@ -13,6 +13,53 @@ data/synthea/*.csv
 data/wearable/*.csv
 data/processed/*.csv
 
+# --- Deployable demo subset (committed so the live deploy + a fresh clone work
+#     out-of-the-box). The FULL 300-patient cohort stays regenerable via
+#     src/data_generation/*.py; the API lists only patients whose data exists.
+!data/synthea/patient_profiles.csv
+!data/wearable/P001.csv
+!data/wearable/P008.csv
+!data/wearable/P011.csv
+!data/wearable/P014.csv
+!data/wearable/P020.csv
+!data/wearable/P021.csv
+!data/wearable/P027.csv
+!data/wearable/P034.csv
+!data/wearable/P040.csv
+!data/wearable/P047.csv
+!data/wearable/P061.csv
+!data/wearable/P068.csv
+!data/wearable/P070.csv
+!data/wearable/P086.csv
+!data/wearable/P087.csv
+!data/wearable/P099.csv
+!data/wearable/P100.csv
+!data/wearable/P106.csv
+!data/wearable/P109.csv
+!data/wearable/P112.csv
+!data/wearable/P113.csv
+!data/wearable/P148.csv
+!data/wearable/P151.csv
+!data/wearable/P159.csv
+!data/wearable/P172.csv
+!data/wearable/P180.csv
+!data/wearable/P186.csv
+!data/wearable/P194.csv
+!data/wearable/P197.csv
+!data/wearable/P199.csv
+!data/wearable/P205.csv
+!data/wearable/P219.csv
+!data/wearable/P226.csv
+!data/wearable/P230.csv
+!data/wearable/P235.csv
+!data/wearable/P262.csv
+!data/wearable/P267.csv
+!data/wearable/P275.csv
+!data/wearable/P287.csv
+!data/wearable/P297.csv
+!data/wearable/P298.csv
+!data/wearable/P300.csv
+
 # Ignore processed JSON by default, but KEEP the trained models, metrics, and
 # feature metadata so the API/dashboard run out-of-the-box and judges can verify
 # the reported results without retraining.

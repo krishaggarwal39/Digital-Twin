@@ -28,14 +28,32 @@ patient_list: List[str] = []
 
 
 def _load_patients_fallback():
-    """Ensure patient list is loaded into memory."""
+    """Ensure patient list is loaded into memory.
+
+    Only list patients whose wearable time-series file actually exists, so the
+    dashboard never offers a patient the API cannot load. This keeps the demo
+    robust whether the deployment ships the full 300-patient cohort or a curated
+    subset.
+    """
     global patient_list
     if not patient_list:
-        ehr_path = os.path.join(os.path.dirname(__file__), "..", "..", "data", "synthea", "patient_profiles.csv")
+        base = os.path.join(os.path.dirname(__file__), "..", "..", "data")
+        ehr_path = os.path.join(base, "synthea", "patient_profiles.csv")
+        wearable_dir = os.path.join(base, "wearable")
         if os.path.exists(ehr_path):
             df = pd.read_csv(ehr_path)
-            patient_list = df["patient_id"].tolist()
-            print(f"Loaded {len(patient_list)} patients")
+            all_ids = df["patient_id"].tolist()
+            if os.path.isdir(wearable_dir):
+                available = {
+                    os.path.splitext(f)[0]
+                    for f in os.listdir(wearable_dir)
+                    if f.endswith(".csv")
+                }
+                filtered = [pid for pid in all_ids if pid in available]
+                patient_list = filtered if filtered else all_ids
+            else:
+                patient_list = all_ids
+            print(f"Loaded {len(patient_list)} patients (of {len(all_ids)} profiles)")
         else:
             print(f"WARNING: {ehr_path} not found")
 
@@ -324,4 +342,7 @@ if __name__ == "__main__":
 
     # Change to project root so relative paths work
     os.chdir(os.path.join(os.path.dirname(__file__), "..", ".."))
-    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
+    # Bind to the platform-provided PORT (Render/Railway/Heroku inject it);
+    # default to 8000 for local development.
+    port = int(os.environ.get("PORT", "8000"))
+    uvicorn.run(app, host="0.0.0.0", port=port, log_level="info")
