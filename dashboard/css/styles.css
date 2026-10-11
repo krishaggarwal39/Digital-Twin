@@ -1181,3 +1181,51 @@ body {
   font-size: 11px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;
   color: var(--text-muted); margin: 4px 0 10px;
 }
+
+/* ===== Sticky section quick-navigation ===== */
+.section-nav {
+  position: sticky;
+  top: 71px;                 /* sits directly under the sticky header */
+  z-index: 90;
+  display: flex;
+  gap: 8px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  padding: 10px 28px;
+  background: rgba(13, 18, 28, 0.92);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--border-subtle);
+  scrollbar-width: none;             /* Firefox: hide the horizontal scrollbar */
+}
+.section-nav::-webkit-scrollbar { height: 0; }
+
+.section-nav-link {
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-decoration: none;
+  padding: 6px 13px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  white-space: nowrap;
+  transition: color 0.2s, background 0.2s, border-color 0.2s;
+}
+.section-nav-link:hover {
+  color: var(--accent-teal);
+  background: rgba(20, 184, 166, 0.12);
+  border-color: rgba(20, 184, 166, 0.4);
+}
+
+/* Smooth scrolling + offset so anchored sections aren't hidden under the sticky bars */
+html { scroll-behavior: smooth; }
+.card[id] { scroll-margin-top: 130px; }
+
+@media (max-width: 768px) {
+  /* Header stacks vertically on mobile (variable height), so don't pin the nav
+     under a fixed offset — let it scroll with the page to avoid overlap. */
+  .section-nav { position: static; padding: 8px 14px; }
+  .card[id] { scroll-margin-top: 16px; }
+}

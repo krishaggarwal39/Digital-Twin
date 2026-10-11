@@ -1093,7 +1093,7 @@ async function loadPatient(patientId) {
 
     } catch (error) {
         console.error('Failed to load patient data:', error);
-        alert(`Failed to load patient ${patientId}. Make sure the FastAPI backend is running on port 8000.`);
+        alert(`Failed to load patient ${patientId}. The Twin API did not respond — please retry in a moment.`);
     } finally {
         hideLoading();
     }
