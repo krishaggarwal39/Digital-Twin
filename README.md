@@ -18,7 +18,9 @@
 ---
 
 ## 🌐 Live Demo
-> ▶️ **[Try the live dashboard](YOUR_RENDER_URL_HERE)** — interact with the digital twin in your browser: pick a patient, see the 2-hour forecast and SHAP drivers, and run the interactive What-If simulator. *(Free-tier host may take ~30s to wake on first visit.)*
+> ▶️ **[Try the live dashboard](https://cardiometabolic-digital-twin.onrender.com/)** — interact with the digital twin in your browser: pick a patient (try **P262**, **P180**, or **P113** for an active risk gauge), see the 2-hour forecast and SHAP drivers, and run the interactive What-If simulator.
+> &nbsp;&nbsp;• Interactive API docs (Swagger): **[/docs](https://cardiometabolic-digital-twin.onrender.com/docs)**
+> &nbsp;&nbsp;*(Free-tier host may take ~30s to wake on first visit.)*
 
 ## 📹 Demo Video
 > 📹 **[Watch the 20-minute demo video](YOUR_YOUTUBE_LINK_HERE)** *(Walkthrough of physiological ODE models, machine learning pipeline, SHAP explainability, real-time What-If clinical counterfactual simulation, and real-world validation on the ShanghaiT2DM cohort)*
