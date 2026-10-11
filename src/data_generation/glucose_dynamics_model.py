@@ -13,6 +13,7 @@ It implements:
 """
 
 from dataclasses import dataclass
+import hashlib
 import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
@@ -361,9 +362,14 @@ def simulate_glucose(
     t_span: tuple = (0.0, float(duration_minutes))
 
     # Use a local RNG seeded per-patient so that process/sensor noise is reproducible
-    # yet DISTINCT across patients. (A module-level np.random.seed here would make the
-    # noise identical for every patient, which is unrealistic and a data-integrity flaw.)
-    rng = np.random.default_rng(abs(hash(params.patient_id)) % (2**32))
+    # yet DISTINCT across patients. We derive the seed from a STABLE hash of the
+    # patient id (hashlib), not Python's built-in hash(), which is randomized per
+    # process (PYTHONHASHSEED) and would make regenerated data non-reproducible
+    # across runs/machines.
+    _seed = int.from_bytes(
+        hashlib.sha256(str(params.patient_id).encode()).digest()[:4], "big"
+    )
+    rng = np.random.default_rng(_seed)
 
     # Pre-generate smooth continuous process noise over a regular grid for RK45 integration stability
     grid_points: int = len(t_eval) + 2
@@ -455,6 +461,15 @@ def simulate_glucose(
         t_eval=t_eval,
         max_step=dt,
     )
+
+    # Guard against a failed integration (e.g. a pathological input that makes the
+    # derivative overflow to NaN): solve_ivp can return an empty solution, which
+    # would make sol.y[0] raise IndexError. Fail loudly with a clear error instead.
+    if not sol.success or sol.y.shape[0] == 0 or sol.y.shape[1] == 0:
+        raise ValueError(
+            f"Glucose ODE integration failed to converge "
+            f"(solver status: {sol.message})"
+        )
 
     raw_glucose: np.ndarray = sol.y[0]
 

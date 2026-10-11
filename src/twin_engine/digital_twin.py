@@ -420,6 +420,9 @@ class DigitalTwin:
 
     def get_timeline(self, hours: int = 24) -> dict:
         """Return the last N hours of wearable readings formatted for JSON serialization."""
+        # Clamp to a sane range: a negative value would make tail() drop rows from
+        # the front (wrong slice), and absurdly large values are capped by history.
+        hours = max(1, min(int(hours), 168))
         n_rows = min(hours * 12, len(self.history))
         recent = self.history.tail(n_rows)
         return {

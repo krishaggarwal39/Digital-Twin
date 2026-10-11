@@ -266,18 +266,26 @@ def simulate(patient_id: str, request: SimulationRequest = SimulationRequest()):
     twin = get_twin(patient_id)
 
     interventions = None
+    def _clamp(x: float, lo: float, hi: float) -> float:
+        try:
+            return float(min(max(float(x), lo), hi))
+        except (TypeError, ValueError):
+            return lo
+
     if request.interventions:
         interventions = []
         for i in request.interventions:
+            # Clamp to clinically sane ranges so a hand-crafted API payload cannot
+            # drive the ODE with nonsensical values (the UI sliders are already bounded).
             interventions.append(
                 Intervention(
-                    name=i.get("name", "Custom intervention"),
+                    name=str(i.get("name", "Custom intervention"))[:80],
                     intervention_type=i.get("intervention_type", "exercise"),
-                    duration=float(i.get("duration", 20.0)),
-                    intensity=float(i.get("intensity", 0.5)),
-                    carbs=float(i.get("carbs", 0.0)),
-                    gi_index=float(i.get("gi_index", 0.5)),
-                    dose=float(i.get("dose", 0.0)),
+                    duration=_clamp(i.get("duration", 20.0), 0.0, 180.0),
+                    intensity=_clamp(i.get("intensity", 0.5), 0.0, 1.0),
+                    carbs=_clamp(i.get("carbs", 0.0), 0.0, 200.0),
+                    gi_index=_clamp(i.get("gi_index", 0.5), 0.0, 1.0),
+                    dose=_clamp(i.get("dose", 0.0), 0.0, 50.0),
                     insulin_type=str(i.get("insulin_type", "rapid")),
                 )
             )
@@ -286,11 +294,16 @@ def simulate(patient_id: str, request: SimulationRequest = SimulationRequest()):
     # so an empty POST {} keeps the exact previous behavior.
     sim_kwargs: Dict[str, Any] = {"interventions": interventions}
     if request.reference_meal_carbs is not None:
-        sim_kwargs["reference_meal_carbs"] = float(request.reference_meal_carbs)
+        sim_kwargs["reference_meal_carbs"] = _clamp(request.reference_meal_carbs, 0.0, 200.0)
     if request.reference_meal_gi is not None:
-        sim_kwargs["reference_meal_gi"] = float(request.reference_meal_gi)
+        sim_kwargs["reference_meal_gi"] = _clamp(request.reference_meal_gi, 0.0, 1.0)
 
-    results = twin.simulate(**sim_kwargs)
+    try:
+        results = twin.simulate(**sim_kwargs)
+    except (ValueError, FloatingPointError) as e:
+        # A pathological intervention that destabilizes the ODE -> clean 422,
+        # never a 500.
+        raise HTTPException(status_code=422, detail=f"Simulation could not run: {e}")
 
     scenarios = []
     for r in results:
@@ -321,11 +334,25 @@ if os.path.isdir(dashboard_dir):
     if os.path.isdir(js_dir):
         app.mount("/js", StaticFiles(directory=js_dir), name="js")
 
-# Expose processed artifacts (SHAP summary, Clarke error grid, etc.) read-only
-# so the dashboard can display the validation plots.
+# Serve ONLY the specific validation plots the dashboard needs — via an explicit
+# allow-list, not a blanket StaticFiles mount of data/processed (which would also
+# expose the full labeled training CSVs, split manifest and model files).
 _assets_dir = os.path.join(os.path.dirname(__file__), "..", "..", "data", "processed")
-if os.path.isdir(_assets_dir):
-    app.mount("/assets", StaticFiles(directory=_assets_dir), name="assets")
+_PUBLIC_ASSETS = {
+    "clarke_error_grid_real.png",
+    "shap_summary_plot.png",
+}
+
+
+@app.get("/assets/{filename}")
+def get_asset(filename: str):
+    """Return a whitelisted validation plot (image) from data/processed."""
+    if filename not in _PUBLIC_ASSETS:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    path = os.path.join(_assets_dir, filename)
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404, detail="Asset not found")
+    return FileResponse(path)
 
 
 @app.get("/")
