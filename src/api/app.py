@@ -198,6 +198,7 @@ def get_validation():
         "real_adapted": _read_json("real_world_trained_results.json"),
         "clinical": _read_json("clinical_metrics_real.json"),
         "synthetic": _read_json("evaluation_results.json"),
+        "multi_horizon": _read_json("multi_horizon_results.json"),
     }
 
 

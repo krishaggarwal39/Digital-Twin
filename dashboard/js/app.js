@@ -957,6 +957,25 @@ function renderValidation(v) {
     const leadMin = lead.forecast_horizon_min || lead.forecast_lead_time_min || 120;
     const detect = (lead.detection_rate_pct != null) ? `${lead.detection_rate_pct}%` : '—';
 
+    // Multi-horizon accuracy (real held-out patients) — accuracy scales with horizon
+    const mh = v.multi_horizon || {};
+    const mhOrder = ['30min', '60min', '90min', '120min'];
+    const mhRows = mhOrder.filter(k => mh[k]).map(k => {
+        const r = mh[k];
+        const r2v = r.r2;
+        const bar = Math.max(2, Math.round(r2v * 100));
+        const col = r2v >= 0.75 ? '#22c55e' : (r2v >= 0.5 ? '#14b8a6' : '#f59e0b');
+        return `<tr>
+            <td>${k.replace('min', ' min')}</td>
+            <td><div style="display:flex;align-items:center;gap:8px;">
+                <div style="flex:1;height:7px;background:rgba(255,255,255,0.06);border-radius:4px;overflow:hidden;">
+                    <div style="width:${bar}%;height:100%;background:${col};"></div></div>
+                <strong style="color:${col};min-width:42px;text-align:right;">${r2v.toFixed(3)}</strong>
+            </div></td>
+            <td>${r.rmse}</td>
+        </tr>`;
+    }).join('');
+
     container.innerHTML = `
         <div class="val-kpi-row">
             ${kpi('Real patients validated', nPat, 'ShanghaiT2DM cohort', '#0ea5e9')}
@@ -999,6 +1018,20 @@ function renderValidation(v) {
                 </p>
             </div>
         </div>
+
+        ${mhRows ? `
+        <div class="val-panel">
+            <h3 class="val-panel-title">Forecast accuracy by horizon — real held-out patients</h3>
+            <table class="val-table">
+                <thead><tr><th>Prediction horizon</th><th>R² (variance explained)</th><th>RMSE mg/dL</th></tr></thead>
+                <tbody>${mhRows}</tbody>
+            </table>
+            <p class="val-note">
+                Accuracy is strongest at near-term horizons (<strong>R² 0.90 at 30 min</strong>) and
+                degrades toward the hard 2-hour mark — the accuracy-versus-horizon trade-off documented
+                in the glucose-forecasting literature. Every value is on real patients the model never saw.
+            </p>
+        </div>` : ''}
     `;
 }
 

@@ -73,6 +73,7 @@ data/processed/*.json
 !data/processed/real_world_results.json
 !data/processed/real_world_trained_results.json
 !data/processed/clinical_metrics_real.json
+!data/processed/multi_horizon_results.json
 !data/processed/xgb_real_regressor.json
 !data/processed/xgb_real_classifier.json
 
