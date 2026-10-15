@@ -249,6 +249,10 @@ body {
 
 .ctrl-row { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end; margin-top: 14px; }
 .ctrl { display: flex; flex-direction: column; gap: 6px; flex: 1 1 150px; min-width: 140px; }
+/* The `hidden` attribute (set by syncControls to show only the active
+   intervention's sliders) must win over `.ctrl { display:flex }`, otherwise
+   every slider shows at once regardless of the selected tab. */
+.ctrl[hidden] { display: none !important; }
 .ctrl-label { display: flex; justify-content: space-between; align-items: center; font-size: 0.625rem; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase; color: var(--text-muted); }
 .ctrl-val { font-family: var(--font-mono); font-size: 0.75rem; font-weight: 600; color: var(--primary-deep); background: var(--primary-wash); padding: 1px 7px; border-radius: 4px; }
 input[type="range"] { -webkit-appearance: none; appearance: none; width: 100%; height: 4px; border-radius: 4px; background: var(--border-strong); outline: none; cursor: pointer; }
