@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cardiometabolic Twin Console</title>
+  <meta name="description" content="Clinical-grade digital twin console for Type 2 diabetes: 2-hour glycemic forecasting, SHAP explainability, counterfactual intervention simulation, and real-world validation.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <!-- Loading overlay -->
+  <div id="loading-overlay" class="loading-overlay">
+    <div style="display:flex;flex-direction:column;align-items:center;">
+      <div class="spinner"></div>
+      <p class="loader-text">Synchronizing patient digital twin…<br>Solving physiological ODEs &amp; running fused inference</p>
+    </div>
+  </div>
+
+  <!-- Top bar -->
+  <header class="topbar">
+    <div class="topbar-brand">
+      <div class="brand-mark">T2</div>
+      <div class="brand-text">
+        <h1>Cardiometabolic Twin Console</h1>
+        <div class="brand-sub">Predictive glycemic excursion &amp; intervention engine</div>
+      </div>
+    </div>
+    <div class="topbar-mid">
+      <div class="patient-select-wrap">
+        <label class="t-micro" for="patient-selector" style="padding-left:2px;">Patient cohort</label>
+        <select id="patient-selector" class="patient-select" aria-label="Select patient">
+          <option value="" disabled selected>Loading…</option>
+        </select>
+      </div>
+    </div>
+    <div class="status-pill" id="connection-badge">
+      <span class="pulse-dot"></span>
+      <span class="status-label">Engine Active</span>
+    </div>
+  </header>
+
+  <!-- Quick nav -->
+  <nav class="section-nav" aria-label="Dashboard sections">
+    <a class="nav-link" href="#sec-patient">Patient 360°</a>
+    <a class="nav-link" href="#sec-risk">2h Risk</a>
+    <a class="nav-link" href="#sec-timeline">Timeline</a>
+    <a class="nav-link" href="#sec-shap">Explainability</a>
+    <a class="nav-link" href="#sec-sim">What-If Simulator</a>
+    <a class="nav-link" href="#sec-validation">Real-World Validation</a>
+  </nav>
+
+  <main class="console-grid">
+    <!-- Sidebar -->
+    <aside class="col sidebar">
+      <!-- Patient 360 -->
+      <section class="card" id="sec-patient">
+        <div class="card-head">
+          <div class="title"><span class="t-micro">Patient 360° — Baseline Physiology</span></div>
+          <span class="chip chip-neutral mono" id="patient-badge">—</span>
+        </div>
+        <div class="card-body" id="patient-card">
+          <div class="skeleton"></div>
+        </div>
+      </section>
+
+      <!-- Risk gauge -->
+      <section class="card" id="sec-risk">
+        <div class="card-head">
+          <div class="title"><span class="t-micro">2-Hour Adverse Risk Prediction</span></div>
+          <span class="heartbeat mono">+120 MIN</span>
+        </div>
+        <div class="card-body">
+          <div class="gauge-wrap">
+            <svg class="gauge-svg" viewBox="0 0 200 118">
+              <path class="gauge-bg" d="M 18 108 A 82 82 0 0 1 182 108"/>
+              <path class="gauge-fill" id="gauge-fill" d="M 18 108 A 82 82 0 0 1 182 108"/>
+            </svg>
+            <div class="gauge-center">
+              <div class="gauge-pct" id="risk-pct">—</div>
+              <div class="gauge-caption">Adverse probability</div>
+            </div>
+          </div>
+          <div class="risk-readout">
+            <div>
+              <div class="t-micro">Classification</div>
+              <div id="risk-level" class="mono" style="font-weight:600;margin-top:2px;">—</div>
+            </div>
+            <div style="text-align:right;">
+              <div class="t-micro">Forecast glucose (2h)</div>
+              <div class="r-forecast"><span id="risk-forecast">—</span> <span class="v-unit">mg/dL</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </aside>
+
+    <!-- Main column -->
+    <div class="col main">
+      <!-- Timeline -->
+      <section class="card" id="sec-timeline">
+        <div class="card-head">
+          <div class="title"><span class="t-micro">Continuous Physiological Timeline — 12h + 2h Forecast</span></div>
+          <div class="legend-row">
+            <span class="legend-item"><span class="legend-swatch" style="background:var(--cgm-line);"></span>CGM</span>
+            <span class="legend-item"><span class="legend-swatch" style="background:var(--hr-line);"></span>HR</span>
+            <span class="legend-item"><span class="legend-swatch dot" style="background:var(--forecast-line);"></span>2h Forecast</span>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="chart-box timeline"><canvas id="timeline-chart"></canvas></div>
+          <div class="vitals-strip" id="vitals-strip"></div>
+        </div>
+      </section>
+
+      <!-- SHAP -->
+      <section class="card" id="sec-shap">
+        <div class="card-head">
+          <div class="title"><span class="t-micro">Model Explainability — TreeSHAP Attribution</span></div>
+          <div class="legend-row">
+            <span class="legend-item"><span class="legend-swatch dot" style="background:var(--primary);"></span>Clinical EHR</span>
+            <span class="legend-item"><span class="legend-swatch dot" style="background:#0891b2;"></span>Wearable</span>
+          </div>
+        </div>
+        <div class="card-body" id="shap-card"></div>
+      </section>
+
+      <!-- What-If simulator -->
+      <section class="card sim-hero" id="sec-sim">
+        <div class="card-head">
+          <div class="title"><span class="t-micro">What-If Intervention Simulator — Bergman ODE In-Silico Trial</span></div>
+          <span class="chip chip-inrange">TWIN SIM ACTIVE</span>
+        </div>
+        <div class="card-body">
+          <div class="controls">
+            <div class="seg" id="sim-type" role="tablist" aria-label="Intervention type">
+              <button class="seg-btn active" data-type="exercise">Post-meal Walk</button>
+              <button class="seg-btn" data-type="meal">Meal Swap</button>
+              <button class="seg-btn" data-type="insulin">Rapid Insulin</button>
+            </div>
+            <div class="ctrl-row">
+              <div class="ctrl">
+                <div class="ctrl-label"><span>Upcoming meal</span><span class="ctrl-val" id="v-meal">55 g</span></div>
+                <input type="range" id="c-meal" min="10" max="100" step="5" value="55">
+              </div>
+              <div class="ctrl type-exercise">
+                <div class="ctrl-label"><span>Walk duration</span><span class="ctrl-val" id="v-dur">20 min</span></div>
+                <input type="range" id="c-dur" min="10" max="45" step="5" value="20">
+              </div>
+              <div class="ctrl type-exercise">
+                <div class="ctrl-label"><span>Intensity</span><span class="ctrl-val" id="v-int">Moderate</span></div>
+                <input type="range" id="c-int" min="0.2" max="0.9" step="0.1" value="0.5">
+              </div>
+              <div class="ctrl type-meal" hidden>
+                <div class="ctrl-label"><span>Swap to</span><span class="ctrl-val" id="v-swap">25 g</span></div>
+                <input type="range" id="c-swap" min="5" max="90" step="5" value="25">
+              </div>
+              <div class="ctrl type-insulin" hidden>
+                <div class="ctrl-label"><span>Rapid insulin</span><span class="ctrl-val" id="v-dose">2.0 U</span></div>
+                <input type="range" id="c-dose" min="0.5" max="8" step="0.5" value="2">
+              </div>
+              <div class="ctrl" style="flex:0 0 auto;">
+                <button id="btn-sim" class="btn btn-primary" type="button">▶ Run Twin Simulation</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="sim-result" id="sim-result" aria-live="polite">
+            <div class="sim-chart-wrap"><div class="chart-box custom"><canvas id="sim-chart"></canvas></div></div>
+            <div class="sim-metrics" id="sim-metrics"></div>
+          </div>
+
+          <div class="preset-label">Preset Scenarios</div>
+          <div class="scenario-grid" id="scenario-grid"></div>
+        </div>
+      </section>
+
+      <!-- Validation -->
+      <section class="card" id="sec-validation">
+        <div class="card-head">
+          <div class="title"><span class="t-micro">Real-World Clinical Validation — ShanghaiT2DM (Nature Sci. Data 2023)</span></div>
+          <span class="disclaimer mono">RESEARCH PROTOTYPE · NOT FOR CLINICAL USE</span>
+        </div>
+        <div class="card-body" id="validation-card">
+          <div class="skeleton"></div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <footer class="console-footer">
+    <span class="f-text">Cardiometabolic Digital Twin · Built for Digital Twin Challenge 2026 · Happiest Health × Unstop</span>
+    <div class="tech-chips">
+      <span class="chip chip-neutral mono">Synthea-style EHR</span>
+      <span class="chip chip-neutral mono">Bergman ODE</span>
+      <span class="chip chip-neutral mono">Fused XGBoost</span>
+      <span class="chip chip-neutral mono">TreeSHAP</span>
+    </div>
+  </footer>
+
+  <script src="js/app.js"></script>
+</body>
+</html>
