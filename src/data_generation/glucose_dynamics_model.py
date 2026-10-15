@@ -329,6 +329,7 @@ def simulate_glucose(
     insulin_events: List[Dict[str, Any]],
     duration_minutes: float,
     dt: float = 5.0,
+    wall_clock_offset_min: float = 0.0,
 ) -> Dict[str, np.ndarray]:
     """Simulate continuous glucose monitor (CGM) dynamics over a specified duration.
 
@@ -350,6 +351,15 @@ def simulate_glucose(
         Total simulation duration in minutes.
     dt : float, default=5.0
         Sampling step interval in minutes.
+    wall_clock_offset_min : float, default=0.0
+        Wall-clock time (minutes from midnight) that corresponds to simulation
+        time t=0. The circadian dawn phenomenon is a function of time-of-day, so
+        the ODE converts each simulation-minute `t` to a clock time via
+        `wall_clock_offset_min + t` before evaluating the dawn term. A window that
+        does not start at midnight (e.g. a counterfactual that begins at the
+        patient's current 18:00) MUST pass its real start-of-day offset, otherwise
+        the morning glucose surge is injected at the wrong time. The 24-hour
+        generator starts at midnight, so it leaves this at 0.0.
 
     Returns
     -------
@@ -436,8 +446,10 @@ def simulate_glucose(
         G: float = state[0]
         X: float = state[1]
 
-        # Circadian baseline elevation at 5:00 AM (Dawn phenomenon)
-        G_b_eff: float = params.G_b + dawn_phenomenon(t_curr, params)
+        # Circadian baseline elevation at 5:00 AM (Dawn phenomenon).
+        # Map simulation-time -> wall-clock minutes-from-midnight so the surge
+        # lands at the real time of day, not at simulation-minute 300.
+        G_b_eff: float = params.G_b + dawn_phenomenon(wall_clock_offset_min + t_curr, params)
 
         # External metabolic inputs
         Ra: float = _meal_rate(t_curr)
@@ -523,6 +535,7 @@ def simulate_patient_day(
         insulin_events=insulin_events,
         duration_minutes=1440.0,
         dt=5.0,
+        wall_clock_offset_min=float(t_start),
     )
 
 

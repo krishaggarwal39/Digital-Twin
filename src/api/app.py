@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import sys
+import threading
 from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException
@@ -22,9 +23,16 @@ from src.twin_engine.digital_twin import (
     load_twin_from_files,
 )
 
-# Global cache
+# Global cache. FastAPI runs the sync (`def`) route handlers in a threadpool, so
+# multiple requests touch `twins_cache` concurrently from different threads.
+# `_cache_lock` guards the cache dict and the per-patient lock registry; the
+# per-patient `_patient_locks` serialize the expensive load for a single patient
+# without blocking loads of *other* patients (so one slow patient can't stall the
+# whole demo).
 twins_cache: Dict[str, DigitalTwin] = {}
 patient_list: List[str] = []
+_cache_lock = threading.Lock()
+_patient_locks: Dict[str, threading.Lock] = {}
 
 
 def _load_patients_fallback():
@@ -86,14 +94,30 @@ app.add_middleware(
 
 
 def get_twin(patient_id: str) -> DigitalTwin:
-    """Get or create a cached DigitalTwin for the given patient."""
-    if patient_id not in twins_cache:
-        try:
-            twin = load_twin_from_files(patient_id)
+    """Get or create a cached DigitalTwin for the given patient.
+
+    Thread-safe: concurrent requests for the same uncached patient load the twin
+    exactly once instead of racing to build and overwrite the same cache entry.
+    """
+    # Fast path: already cached (dict reads are atomic under the GIL).
+    twin = twins_cache.get(patient_id)
+    if twin is not None:
+        return twin
+
+    # Grab (or create) the lock dedicated to this patient, under the registry lock.
+    with _cache_lock:
+        patient_lock = _patient_locks.setdefault(patient_id, threading.Lock())
+
+    # Only one thread loads a given patient; others wait here, then hit the cache.
+    with patient_lock:
+        twin = twins_cache.get(patient_id)
+        if twin is None:
+            try:
+                twin = load_twin_from_files(patient_id)
+            except Exception as e:
+                raise HTTPException(status_code=404, detail=f"Patient {patient_id} not found: {str(e)}")
             twins_cache[patient_id] = twin
-        except Exception as e:
-            raise HTTPException(status_code=404, detail=f"Patient {patient_id} not found: {str(e)}")
-    return twins_cache[patient_id]
+        return twin
 
 
 # Pydantic models for request/response

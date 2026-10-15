@@ -309,6 +309,19 @@ class DigitalTwin:
 
         current_glucose = float(self.history["cgm_glucose"].iloc[-1]) if len(self.history) > 0 else float(self.params.G_b)
 
+        # Time-of-day at which this counterfactual window begins (minutes from
+        # midnight). The dawn phenomenon is circadian, so a window that starts at,
+        # say, 18:00 must tell the ODE that simulation t=0 maps to 18:00 — otherwise
+        # the morning glucose surge is injected mid-afternoon. Derived from the last
+        # observed wearable timestamp; falls back to 0.0 if it cannot be parsed.
+        wall_clock_offset_min = 0.0
+        if len(self.history) > 0:
+            try:
+                ts = pd.to_datetime(self.history["timestamp"].iloc[-1])
+                wall_clock_offset_min = float(ts.hour * 60 + ts.minute + ts.second / 60.0)
+            except (ValueError, TypeError):
+                wall_clock_offset_min = 0.0
+
         # Smooth deterministic baseline starting from current glucose
         params_copy = copy.deepcopy(self.params)
         params_copy.G_b = current_glucose
@@ -361,7 +374,8 @@ class DigitalTwin:
             exercises=[],
             insulin_events=[],
             duration_minutes=horizon_minutes,
-            dt=5.0
+            dt=5.0,
+            wall_clock_offset_min=wall_clock_offset_min,
         )
         results.append(_create_sim_result("Baseline (usual meal, no action)", base_sim))
 
@@ -399,7 +413,8 @@ class DigitalTwin:
                 exercises=exercises,
                 insulin_events=insulin_events,
                 duration_minutes=horizon_minutes,
-                dt=5.0
+                dt=5.0,
+                wall_clock_offset_min=wall_clock_offset_min,
             )
             results.append(_create_sim_result(item.name, sim_out))
 
