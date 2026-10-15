@@ -350,23 +350,14 @@ def simulate(patient_id: str, request: SimulationRequest = SimulationRequest()):
 
 # Serve the dashboard and assets.
 #
-# The v2 "Clinical Instrument" dashboard is the primary UI, mounted at /dashboard.
-# The original v1 dashboard is retained as a fallback at /dashboard-v1 so there is
-# always a known-good UI to fall back to during the demo. Both reference their
-# css/ and js/ via relative paths, so each html=True mount resolves assets within
-# its own subtree (no shared top-level /css or /js mount needed).
+# The "Clinical Instrument" dashboard (dashboard-v2/) is the single UI, mounted at
+# /dashboard. It references css/ and js/ via relative paths, so the html=True mount
+# resolves those assets within its own subtree (no shared top-level /css or /js
+# mount needed).
 _base_dir = os.path.join(os.path.dirname(__file__), "..", "..")
-dashboard_v2_dir = os.path.join(_base_dir, "dashboard-v2")
-dashboard_v1_dir = os.path.join(_base_dir, "dashboard")
-
-# Primary dashboard (v2 if present, otherwise fall back to v1).
-dashboard_dir = dashboard_v2_dir if os.path.isdir(dashboard_v2_dir) else dashboard_v1_dir
+dashboard_dir = os.path.join(_base_dir, "dashboard-v2")
 if os.path.isdir(dashboard_dir):
     app.mount("/dashboard", StaticFiles(directory=dashboard_dir, html=True), name="dashboard")
-
-# v1 fallback, always available at its own path when it exists.
-if os.path.isdir(dashboard_v1_dir):
-    app.mount("/dashboard-v1", StaticFiles(directory=dashboard_v1_dir, html=True), name="dashboard-v1")
 
 # Serve ONLY the specific validation plots the dashboard needs — via an explicit
 # allow-list, not a blanket StaticFiles mount of data/processed (which would also
